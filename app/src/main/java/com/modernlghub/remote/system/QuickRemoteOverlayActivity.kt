@@ -54,6 +54,7 @@ import com.modernlghub.remote.ui.theme.SurfaceCard
 import com.modernlghub.remote.ui.theme.SurfaceCardVariant
 import com.modernlghub.remote.ui.theme.TextMuted
 import com.modernlghub.remote.ui.theme.TextWhite
+import com.modernlghub.remote.ui.theme.ToslinkRed
 import kotlinx.coroutines.launch
 
 class QuickRemoteOverlayActivity : ComponentActivity() {
@@ -246,16 +247,22 @@ private fun OverlayContent(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
                         .background(SurfaceCardVariant)
-                        .border(1.dp, CardBorder, RoundedCornerShape(10.dp))
+                        .border(1.dp, if (status.audio.isDenonOptical) ToslinkRed.copy(alpha = 0.5f) else CardBorder, RoundedCornerShape(10.dp))
                         .clickable {
-                            haptics.click()
+                            haptics.doubleClick()
                             scope.launch {
                                 apiClient.toggleAudioOutput()
+                                status = apiClient.getStatus()
                             }
                         }
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
-                    Text(text = "🔊 Denon ⇄ TV", color = DenonGreen, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium)
+                    Text(
+                        text = if (status.audio.isDenonOptical) "🔴 Denon ⇄ TV" else "🔊 TV ⇄ Denon",
+                        color = if (status.audio.isDenonOptical) ToslinkRed else DenonGreen,
+                        fontSize = 11.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                    )
                 }
             }
         }

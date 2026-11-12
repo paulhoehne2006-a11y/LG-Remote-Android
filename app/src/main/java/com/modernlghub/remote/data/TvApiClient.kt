@@ -209,6 +209,18 @@ class TvApiClient(private val context: Context) {
         }
     }
 
+    suspend fun setPictureMode(mode: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val payload = JSONObject().put("mode", mode).toString()
+            val body = payload.toRequestBody(jsonMediaType)
+            val req = Request.Builder().url("$baseUrl/api/picture/mode").post(body).build()
+            val resp = httpClient.newCall(req).execute()
+            resp.isSuccessful
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     suspend fun getSmartDevices(): List<SmartDevice> = withContext(Dispatchers.IO) {
         try {
             val req = Request.Builder().url("$baseUrl/api/smartthings/devices").get().build()
