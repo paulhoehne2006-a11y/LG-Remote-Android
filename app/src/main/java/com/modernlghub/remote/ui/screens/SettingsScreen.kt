@@ -31,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +51,7 @@ import com.modernlghub.remote.ui.theme.SurfaceCard
 import com.modernlghub.remote.ui.theme.SurfaceCardVariant
 import com.modernlghub.remote.ui.theme.TextMuted
 import com.modernlghub.remote.ui.theme.TextWhite
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
@@ -58,6 +60,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val prefs = remember { TvPreferences(context) }
     val haptics = remember { Haptics(context) }
+    val scope = rememberCoroutineScope()
 
     var tvIp by remember { mutableStateOf(prefs.tvIp) }
     var tvMac by remember { mutableStateOf(prefs.tvMac) }
@@ -147,7 +150,7 @@ fun SettingsScreen(
                     onClick = {
                         haptics.click()
                         testStatusText = "Verbinde..."
-                        kotlinx.coroutines.GlobalScope.launch {
+                        scope.launch {
                             val st = apiClient.getStatus()
                             testStatusText = if (st.isOnline) {
                                 "Online! App: ${st.currentAppTitle}, MAC: ${st.primaryMac}"
@@ -168,7 +171,7 @@ fun SettingsScreen(
                 Button(
                     onClick = {
                         haptics.heavyClick()
-                        kotlinx.coroutines.GlobalScope.launch {
+                        scope.launch {
                             val ok = apiClient.sendWakeOnLan()
                             testStatusText = if (ok) "Wake-on-LAN Paket gesendet!" else "Fehler: Keine MAC hinterlegt"
                         }

@@ -29,16 +29,19 @@ import androidx.compose.material.icons.filled.VolumeMute
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.lifecycleScope
 import com.modernlghub.remote.data.TvApiClient
 import com.modernlghub.remote.data.TvStatus
 import com.modernlghub.remote.ui.components.GesturePad
@@ -50,6 +53,7 @@ import com.modernlghub.remote.ui.theme.SurfaceCard
 import com.modernlghub.remote.ui.theme.SurfaceCardVariant
 import com.modernlghub.remote.ui.theme.TextMuted
 import com.modernlghub.remote.ui.theme.TextWhite
+import kotlinx.coroutines.launch
 
 class QuickRemoteOverlayActivity : ComponentActivity() {
 
@@ -81,17 +85,17 @@ class QuickRemoteOverlayActivity : ComponentActivity() {
         return when (keyCode) {
             KeyEvent.KEYCODE_VOLUME_UP -> {
                 haptics.tick()
-                kotlinx.coroutines.GlobalScope.launch { apiClient.quickAction("vol_up") }
+                lifecycleScope.launch { apiClient.quickAction("vol_up") }
                 true
             }
             KeyEvent.KEYCODE_VOLUME_DOWN -> {
                 haptics.tick()
-                kotlinx.coroutines.GlobalScope.launch { apiClient.quickAction("vol_down") }
+                lifecycleScope.launch { apiClient.quickAction("vol_down") }
                 true
             }
             KeyEvent.KEYCODE_VOLUME_MUTE -> {
                 haptics.click()
-                kotlinx.coroutines.GlobalScope.launch { apiClient.quickAction("mute") }
+                lifecycleScope.launch { apiClient.quickAction("mute") }
                 true
             }
             else -> super.onKeyDown(keyCode, event)
@@ -105,6 +109,7 @@ private fun OverlayContent(
     onClose: () -> Unit
 ) {
     val haptics = remember { Haptics(androidx.compose.ui.platform.LocalContext.current) }
+    val scope = rememberCoroutineScope()
     var status by remember { mutableStateOf(TvStatus()) }
 
     LaunchedEffect(Unit) {
@@ -161,7 +166,7 @@ private fun OverlayContent(
                             .border(1.dp, CardBorder, RoundedCornerShape(10.dp))
                             .clickable {
                                 haptics.click()
-                                kotlinx.coroutines.GlobalScope.launch {
+                                scope.launch {
                                     apiClient.quickAction("screen_toggle")
                                 }
                             }
@@ -187,13 +192,13 @@ private fun OverlayContent(
                 GesturePad(
                     modifier = Modifier.fillMaxWidth().height(230.dp),
                     onDirection = { dir ->
-                        kotlinx.coroutines.GlobalScope.launch { apiClient.sendRemoteKey(dir) }
+                        scope.launch { apiClient.sendRemoteKey(dir) }
                     },
                     onSelect = {
-                        kotlinx.coroutines.GlobalScope.launch { apiClient.sendRemoteKey("ENTER") }
+                        scope.launch { apiClient.sendRemoteKey("ENTER") }
                     },
                     onLongSelect = {
-                        kotlinx.coroutines.GlobalScope.launch { apiClient.sendRemoteKey("ENTER", fast = false) }
+                        scope.launch { apiClient.sendRemoteKey("ENTER", fast = false) }
                     }
                 )
             }
@@ -208,28 +213,28 @@ private fun OverlayContent(
             ) {
                 IconButton(onClick = {
                     haptics.click()
-                    kotlinx.coroutines.GlobalScope.launch { apiClient.sendRemoteKey("BACK") }
+                    scope.launch { apiClient.sendRemoteKey("BACK") }
                 }) {
                     Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Zurück", tint = TextWhite)
                 }
 
                 IconButton(onClick = {
                     haptics.click()
-                    kotlinx.coroutines.GlobalScope.launch { apiClient.sendRemoteKey("HOME") }
+                    scope.launch { apiClient.sendRemoteKey("HOME") }
                 }) {
                     Icon(imageVector = Icons.Default.Home, contentDescription = "Home", tint = TextWhite)
                 }
 
                 IconButton(onClick = {
                     haptics.click()
-                    kotlinx.coroutines.GlobalScope.launch { apiClient.sendRemoteKey("PLAY") }
+                    scope.launch { apiClient.sendRemoteKey("PLAY") }
                 }) {
                     Icon(imageVector = Icons.Default.PlayArrow, contentDescription = "Play/Pause", tint = TextWhite)
                 }
 
                 IconButton(onClick = {
                     haptics.click()
-                    kotlinx.coroutines.GlobalScope.launch { apiClient.quickAction("mute") }
+                    scope.launch { apiClient.quickAction("mute") }
                 }) {
                     Icon(imageVector = Icons.Default.VolumeMute, contentDescription = "Mute", tint = TextWhite)
                 }
@@ -242,7 +247,7 @@ private fun OverlayContent(
                         .border(1.dp, CardBorder, RoundedCornerShape(10.dp))
                         .clickable {
                             haptics.click()
-                            kotlinx.coroutines.GlobalScope.launch {
+                            scope.launch {
                                 apiClient.toggleAudioOutput()
                             }
                         }

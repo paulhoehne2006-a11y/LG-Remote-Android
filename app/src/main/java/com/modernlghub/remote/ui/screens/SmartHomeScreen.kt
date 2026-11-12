@@ -23,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +41,7 @@ import com.modernlghub.remote.ui.theme.SurfaceCard
 import com.modernlghub.remote.ui.theme.SurfaceCardVariant
 import com.modernlghub.remote.ui.theme.TextMuted
 import com.modernlghub.remote.ui.theme.TextWhite
+import kotlinx.coroutines.launch
 
 @Composable
 fun SmartHomeScreen(
@@ -47,6 +49,7 @@ fun SmartHomeScreen(
 ) {
     val context = LocalContext.current
     val haptics = remember { Haptics(context) }
+    val scope = rememberCoroutineScope()
     var devices by remember { mutableStateOf<List<SmartDevice>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
@@ -92,7 +95,7 @@ fun SmartHomeScreen(
                     .border(1.dp, CardBorder, RoundedCornerShape(10.dp))
                     .clickable {
                         haptics.click()
-                        kotlinx.coroutines.GlobalScope.launch { loadDevices() }
+                        scope.launch { loadDevices() }
                     }
                     .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
@@ -119,7 +122,7 @@ fun SmartHomeScreen(
                         device = dev,
                         onToggle = {
                             haptics.click()
-                            kotlinx.coroutines.GlobalScope.launch {
+                            scope.launch {
                                 apiClient.toggleSmartDevice(dev.id)
                                 loadDevices()
                             }

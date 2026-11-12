@@ -36,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,6 +65,7 @@ import com.modernlghub.remote.ui.theme.SurfaceCard
 import com.modernlghub.remote.ui.theme.SurfaceCardVariant
 import com.modernlghub.remote.ui.theme.TextMuted
 import com.modernlghub.remote.ui.theme.TextWhite
+import kotlinx.coroutines.launch
 
 @Composable
 fun RemoteScreen(
@@ -75,6 +77,7 @@ fun RemoteScreen(
     val context = LocalContext.current
     val prefs = remember { TvPreferences(context) }
     val haptics = remember { Haptics(context) }
+    val scope = rememberCoroutineScope()
 
     var selectedPadMode by remember { mutableIntStateOf(prefs.touchpadMode) }
     var showAudioDialog by remember { mutableStateOf(false) }
@@ -134,7 +137,7 @@ fun RemoteScreen(
                             .border(1.dp, if (status.isScreenOff) DenonGreen else CardBorder, RoundedCornerShape(12.dp))
                             .clickable {
                                 haptics.click()
-                                kotlinx.coroutines.GlobalScope.launch {
+                                scope.launch {
                                     apiClient.quickAction("screen_toggle")
                                     onRefreshStatus()
                                 }
@@ -159,7 +162,7 @@ fun RemoteScreen(
                             .border(1.dp, CardBorder, CircleShape)
                             .clickable {
                                 haptics.heavyClick()
-                                kotlinx.coroutines.GlobalScope.launch {
+                                scope.launch {
                                     if (status.isOnline) {
                                         apiClient.quickAction("power_off")
                                     } else {
@@ -283,17 +286,17 @@ fun RemoteScreen(
                 0 -> GesturePad(
                     modifier = Modifier.fillMaxSize(),
                     onDirection = { dir ->
-                        kotlinx.coroutines.GlobalScope.launch {
+                        scope.launch {
                             apiClient.sendRemoteKey(dir, fast = true)
                         }
                     },
                     onSelect = {
-                        kotlinx.coroutines.GlobalScope.launch {
+                        scope.launch {
                             apiClient.sendRemoteKey("ENTER", fast = true)
                         }
                     },
                     onLongSelect = {
-                        kotlinx.coroutines.GlobalScope.launch {
+                        scope.launch {
                             apiClient.sendRemoteKey("ENTER", fast = false)
                         }
                     }
@@ -301,12 +304,12 @@ fun RemoteScreen(
                 1 -> DPadControl(
                     modifier = Modifier.fillMaxSize(),
                     onDirection = { dir ->
-                        kotlinx.coroutines.GlobalScope.launch {
+                        scope.launch {
                             apiClient.sendRemoteKey(dir, fast = true)
                         }
                     },
                     onSelect = {
-                        kotlinx.coroutines.GlobalScope.launch {
+                        scope.launch {
                             apiClient.sendRemoteKey("ENTER", fast = true)
                         }
                     }
@@ -332,22 +335,22 @@ fun RemoteScreen(
         ) {
             RemoteActionButton(icon = Icons.Default.ArrowBack, label = "Zurück") {
                 haptics.click()
-                kotlinx.coroutines.GlobalScope.launch { apiClient.sendRemoteKey("BACK") }
+                scope.launch { apiClient.sendRemoteKey("BACK") }
             }
 
             RemoteActionButton(icon = Icons.Default.Home, label = "Home") {
                 haptics.click()
-                kotlinx.coroutines.GlobalScope.launch { apiClient.sendRemoteKey("HOME") }
+                scope.launch { apiClient.sendRemoteKey("HOME") }
             }
 
             RemoteActionButton(icon = Icons.Default.PlayArrow, label = "Play/Pause") {
                 haptics.click()
-                kotlinx.coroutines.GlobalScope.launch { apiClient.sendRemoteKey("PLAY") }
+                scope.launch { apiClient.sendRemoteKey("PLAY") }
             }
 
             RemoteActionButton(icon = Icons.Default.VolumeMute, label = "Mute") {
                 haptics.click()
-                kotlinx.coroutines.GlobalScope.launch { apiClient.quickAction("mute") }
+                scope.launch { apiClient.quickAction("mute") }
             }
 
             RemoteActionButton(icon = Icons.Default.Keyboard, label = "Tastatur") {
@@ -367,7 +370,7 @@ fun RemoteScreen(
                     modifier = Modifier
                         .clickable {
                             haptics.tick()
-                            kotlinx.coroutines.GlobalScope.launch { apiClient.quickAction("vol_down") }
+                            scope.launch { apiClient.quickAction("vol_down") }
                         }
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
@@ -377,7 +380,7 @@ fun RemoteScreen(
                     modifier = Modifier
                         .clickable {
                             haptics.tick()
-                            kotlinx.coroutines.GlobalScope.launch { apiClient.quickAction("vol_up") }
+                            scope.launch { apiClient.quickAction("vol_up") }
                         }
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
@@ -409,7 +412,7 @@ fun RemoteScreen(
                         iconUrl = apiClient.getAppIconUrl(app.id),
                         onClick = {
                             haptics.click()
-                            kotlinx.coroutines.GlobalScope.launch {
+                            scope.launch {
                                 apiClient.launchApp(app.id)
                                 onRefreshStatus()
                             }
@@ -425,7 +428,7 @@ fun RemoteScreen(
         AudioOutputDialog(
             currentAudio = status.audio,
             onSelectOutput = { output ->
-                kotlinx.coroutines.GlobalScope.launch {
+                scope.launch {
                     apiClient.setAudioOutput(output)
                     onRefreshStatus()
                 }
@@ -438,10 +441,10 @@ fun RemoteScreen(
     if (showTextDialog) {
         TextInputDialog(
             onSendText = { text ->
-                kotlinx.coroutines.GlobalScope.launch { apiClient.sendText(text) }
+                scope.launch { apiClient.sendText(text) }
             },
             onSendEnter = {
-                kotlinx.coroutines.GlobalScope.launch { apiClient.sendEnter() }
+                scope.launch { apiClient.sendEnter() }
             },
             onDismiss = { showTextDialog = false }
         )

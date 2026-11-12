@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +42,7 @@ import com.modernlghub.remote.ui.theme.SurfaceCard
 import com.modernlghub.remote.ui.theme.SurfaceCardVariant
 import com.modernlghub.remote.ui.theme.TextMuted
 import com.modernlghub.remote.ui.theme.TextWhite
+import kotlinx.coroutines.launch
 
 @Composable
 fun GeminiScreen(
@@ -48,6 +50,7 @@ fun GeminiScreen(
 ) {
     val context = LocalContext.current
     val haptics = remember { Haptics(context) }
+    val scope = rememberCoroutineScope()
     var inputPrompt by remember { mutableStateOf("") }
     var responseText by remember { mutableStateOf("") }
     var isThinking by remember { mutableStateOf(false) }
@@ -57,7 +60,7 @@ fun GeminiScreen(
         haptics.click()
         isThinking = true
         responseText = "Gemini denkt nach..."
-        kotlinx.coroutines.GlobalScope.launch {
+        scope.launch {
             val res = apiClient.sendGeminiCommand(prompt)
             responseText = res
             isThinking = false

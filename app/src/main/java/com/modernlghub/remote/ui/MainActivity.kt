@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +42,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.modernlghub.remote.data.LauncherApp
 import com.modernlghub.remote.data.TvApiClient
 import com.modernlghub.remote.data.TvStatus
@@ -58,6 +60,7 @@ import com.modernlghub.remote.ui.theme.SurfaceCard
 import com.modernlghub.remote.ui.theme.TextMuted
 import com.modernlghub.remote.ui.theme.TextWhite
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -86,21 +89,21 @@ class MainActivity : ComponentActivity() {
         return when (keyCode) {
             KeyEvent.KEYCODE_VOLUME_UP -> {
                 haptics.tick()
-                kotlinx.coroutines.GlobalScope.launch {
+                lifecycleScope.launch {
                     apiClient.quickAction("vol_up")
                 }
                 true
             }
             KeyEvent.KEYCODE_VOLUME_DOWN -> {
                 haptics.tick()
-                kotlinx.coroutines.GlobalScope.launch {
+                lifecycleScope.launch {
                     apiClient.quickAction("vol_down")
                 }
                 true
             }
             KeyEvent.KEYCODE_VOLUME_MUTE -> {
                 haptics.click()
-                kotlinx.coroutines.GlobalScope.launch {
+                lifecycleScope.launch {
                     apiClient.quickAction("mute")
                 }
                 true
@@ -124,6 +127,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainContent(apiClient: TvApiClient) {
+    val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableIntStateOf(0) }
     var tvStatus by remember { mutableStateOf(TvStatus()) }
     var appsList by remember { mutableStateOf<List<LauncherApp>>(emptyList()) }
@@ -209,7 +213,7 @@ fun MainContent(apiClient: TvApiClient) {
                     apps = appsList,
                     apiClient = apiClient,
                     onRefreshStatus = {
-                        kotlinx.coroutines.GlobalScope.launch { refreshData() }
+                        scope.launch { refreshData() }
                     }
                 )
                 1 -> AppsScreen(
@@ -217,7 +221,7 @@ fun MainContent(apiClient: TvApiClient) {
                     apiClient = apiClient,
                     onAppLaunched = {
                         selectedTab = 0
-                        kotlinx.coroutines.GlobalScope.launch { refreshData() }
+                        scope.launch { refreshData() }
                     }
                 )
                 2 -> SmartHomeScreen(apiClient = apiClient)
