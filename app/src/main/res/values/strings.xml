@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Modern LG Remote</string>
+    <string name="tile_label">LG OLED</string>
+    <string name="tile_description">LG OLED Fernbedienung öffnen</string>
+    <string name="widget_description">Kompakte 2x2 Schnellsteuerung für deinen LG OLED</string>
+    <string name="notification_channel_name">LG OLED Status</string>
+    <string name="notification_channel_desc">Zeigt Live-Steuerung, wenn der LG TV im Heim-WLAN aktiv ist</string>
+
+    <string name="shortcut_screen_off_short">Display Aus</string>
+    <string name="shortcut_screen_off_long">OLED Bildschirm ein-/ausschalten</string>
+    <string name="shortcut_pc_short">PC (HDMI 1)</string>
+    <string name="shortcut_pc_long">Auf PC (HDMI 1) umschalten</string>
+    <string name="shortcut_overlay_short">Mini-Remote</string>
+    <string name="shortcut_overlay_long">Fernbedienungs-Overlay öffnen</string>
+
+    <string name="action_power">Power</string>
+    <string name="action_screen_off">OLED Aus</string>
+    <string name="action_pc">PC</string>
+    <string name="action_overlay">Remote</string>
+    <string name="action_mute">Mute</string>
+    <string name="action_audio">Audio</string>
+    <string name="action_home">Home</string>
+</resources>
