@@ -1,14 +1,16 @@
 package com.modernlghub.remote.ui.screens
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,22 +28,38 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Dialpad
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Keyboard
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.PowerSettingsNew
-import androidx.compose.material.icons.filled.Tv
-import androidx.compose.material.icons.filled.VolumeMute
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Computer
+import androidx.compose.material.icons.rounded.DesktopAccessDisabled
+import androidx.compose.material.icons.rounded.Gamepad
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Keyboard
+import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.Mouse
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.PowerSettingsNew
+import androidx.compose.material.icons.rounded.Remove
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Speaker
+import androidx.compose.material.icons.rounded.Swipe
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Tv
+import androidx.compose.material.icons.rounded.WifiOff
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,635 +68,430 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import com.modernlghub.remote.data.Connection
 import com.modernlghub.remote.data.LauncherApp
-import com.modernlghub.remote.data.TvApiClient
-import com.modernlghub.remote.data.TvPreferences
-import com.modernlghub.remote.data.TvStatus
-import com.modernlghub.remote.ui.components.AudioOutputDialog
+import com.modernlghub.remote.data.TvState
+import com.modernlghub.remote.ui.components.AppIcon
+import com.modernlghub.remote.ui.components.AudioOutputSheet
+import com.modernlghub.remote.ui.components.CursorPad
 import com.modernlghub.remote.ui.components.DPadControl
 import com.modernlghub.remote.ui.components.GesturePad
-import com.modernlghub.remote.ui.components.Haptics
-import com.modernlghub.remote.ui.components.MagicCursorPad
-import com.modernlghub.remote.ui.components.NumPadSheet
-import com.modernlghub.remote.ui.components.TextInputDialog
-import com.modernlghub.remote.ui.theme.AccentBlue
-import com.modernlghub.remote.ui.theme.AccentRed
-import com.modernlghub.remote.ui.theme.AmberGlow
-import com.modernlghub.remote.ui.theme.CardBorder
-import com.modernlghub.remote.ui.theme.CyberCyan
-import com.modernlghub.remote.ui.theme.DenonGreen
-import com.modernlghub.remote.ui.theme.GeminiPurple
-import com.modernlghub.remote.ui.theme.OledBlack
-import com.modernlghub.remote.ui.theme.SurfaceCard
-import com.modernlghub.remote.ui.theme.SurfaceCardElevated
-import com.modernlghub.remote.ui.theme.SurfaceCardVariant
-import com.modernlghub.remote.ui.theme.TextMuted
-import com.modernlghub.remote.ui.theme.TextWhite
-import com.modernlghub.remote.ui.theme.ToslinkRed
-import kotlinx.coroutines.launch
+import com.modernlghub.remote.ui.components.KeyboardSheet
+import com.modernlghub.remote.ui.components.MoreKeysSheet
+import com.modernlghub.remote.ui.components.PictureModeSheet
+import com.modernlghub.remote.ui.components.RoundButton
+import com.modernlghub.remote.ui.components.StatusDot
+import com.modernlghub.remote.ui.components.card
+import com.modernlghub.remote.ui.components.pressable
+import com.modernlghub.remote.ui.components.rememberHaptics
+import com.modernlghub.remote.ui.theme.Accent
+import com.modernlghub.remote.ui.theme.AccentDim
+import com.modernlghub.remote.ui.theme.Hairline
+import com.modernlghub.remote.ui.theme.StatusOff
+import com.modernlghub.remote.ui.theme.StatusOn
+import com.modernlghub.remote.ui.theme.StatusWarn
+import com.modernlghub.remote.ui.theme.Surface1
+import com.modernlghub.remote.ui.theme.Surface2
+import com.modernlghub.remote.ui.theme.TextPrimary
+import com.modernlghub.remote.ui.theme.TextSecondary
+import com.modernlghub.remote.ui.theme.TextTertiary
+
+private enum class Sheet { NONE, KEYBOARD, MORE, PICTURE, AUDIO }
 
 @Composable
 fun RemoteScreen(
-    status: TvStatus,
-    apps: List<LauncherApp>,
-    apiClient: TvApiClient,
-    onRefreshStatus: () -> Unit
+    state: TvState,
+    padMode: Int,
+    hubAddress: String,
+    onPadModeChange: (Int) -> Unit,
+    onIntent: (RemoteIntent) -> Unit,
+    onOpenSettings: () -> Unit,
+    iconUrl: (String) -> String,
+    modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-    val prefs = remember { TvPreferences(context) }
-    val haptics = remember { Haptics(context) }
-    val scope = rememberCoroutineScope()
-
-    var selectedPadMode by remember { mutableIntStateOf(prefs.touchpadMode) }
-    var showAudioDialog by remember { mutableStateOf(false) }
-    var showTextDialog by remember { mutableStateOf(false) }
-    var showNumPad by remember { mutableStateOf(false) }
-
-    // Dynamic Ambient Color based on current app or source
-    val targetAmbientColor = when {
-        status.currentApp.contains("hdmi1", ignoreCase = true) -> CyberCyan
-        status.currentApp.contains("youtube", ignoreCase = true) -> Color(0xFFFF0000)
-        status.currentApp.contains("netflix", ignoreCase = true) -> Color(0xFFE50914)
-        status.currentApp.contains("amazon", ignoreCase = true) || status.currentApp.contains("disney", ignoreCase = true) -> AccentBlue
-        status.audio.isDenonOptical -> ToslinkRed
-        status.isOnline -> DenonGreen
-        else -> CardBorder
-    }
-    val ambientGlow by animateColorAsState(targetAmbientColor, tween(600))
-
-    // Pulse animation for Online status indicator
-    val infiniteTransition = rememberInfiniteTransition()
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.4f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1400), RepeatMode.Reverse)
-    )
+    val haptics = rememberHaptics()
+    var sheet by rememberSaveable { mutableStateOf(Sheet.NONE) }
+    val ambient = ambientColor(state)
+    val glow by animateColorAsState(ambient, tween(800), label = "ambient")
 
     Column(
-        modifier = Modifier
+        modifier
             .fillMaxSize()
-            .background(OledBlack)
             .drawBehind {
-                // Top subtle ambient glow reflecting active app
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(ambientGlow.copy(alpha = 0.14f), Color.Transparent),
+                drawRect(
+                    Brush.radialGradient(
+                        listOf(glow.copy(alpha = 0.13f), Color.Transparent),
                         center = Offset(size.width * 0.5f, 0f),
-                        radius = size.width * 0.9f
+                        radius = size.width * 1.1f,
                     )
                 )
             }
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.SpaceBetween
+            .padding(horizontal = 20.dp),
     ) {
-        // 1. Top Hero Header (OLED Status + Standby / WoL + Screen-Off)
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Pulsing LED indicator
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (status.isOnline) DenonGreen.copy(alpha = pulseAlpha)
-                                else AccentRed.copy(alpha = 0.5f)
-                            )
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "LG OLED G4",
-                                color = TextWhite,
-                                fontSize = 16.sp,
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(SurfaceCardVariant)
-                                    .padding(horizontal = 5.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = if (status.currentApp.contains("hdmi1", ignoreCase = true)) "4K · 144Hz HDR" else "4K HDR",
-                                    color = if (status.currentApp.contains("hdmi1", ignoreCase = true)) CyberCyan else TextMuted,
-                                    fontSize = 9.sp,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                                )
-                            }
-                        }
-                        Text(
-                            text = if (status.isOnline) {
-                                if (status.isScreenOff) "Display ausgeschaltet (Audio aktiv)" else status.currentAppTitle
-                            } else "Standby · Zum Wecken Power tippen",
-                            color = if (status.isScreenOff) AmberGlow else TextMuted,
-                            fontSize = 12.sp,
-                            maxLines = 1
-                        )
-                    }
-                }
+        Spacer(Modifier.height(8.dp))
+        Header(state, onPower = { haptics.heavy(); onIntent(RemoteIntent.Power) }, onOpenSettings = onOpenSettings)
+        Spacer(Modifier.height(16.dp))
 
-                // Header Action Buttons: OLED Aus & Power
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // OLED Screen-Off Button
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (status.isScreenOff) DenonGreen.copy(alpha = 0.2f) else SurfaceCard)
-                            .border(1.dp, if (status.isScreenOff) DenonGreen else CardBorder, RoundedCornerShape(12.dp))
-                            .clickable {
-                                haptics.click()
-                                scope.launch {
-                                    apiClient.quickAction("screen_toggle")
-                                    onRefreshStatus()
-                                }
-                            }
-                            .padding(horizontal = 10.dp, vertical = 7.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = if (status.isScreenOff) "OLED An" else "OLED Aus",
-                            color = if (status.isScreenOff) DenonGreen else TextWhite,
-                            fontSize = 12.sp,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
-                        )
-                    }
-
-                    // Power Button (WoL / Standby)
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(SurfaceCard)
-                            .border(1.dp, if (!status.isOnline) AccentRed.copy(alpha = 0.6f) else CardBorder, CircleShape)
-                            .clickable {
-                                haptics.heavyClick()
-                                scope.launch {
-                                    if (status.isOnline) {
-                                        apiClient.quickAction("power_off")
-                                    } else {
-                                        apiClient.sendWakeOnLan()
-                                    }
-                                    onRefreshStatus()
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PowerSettingsNew,
-                            contentDescription = "Power",
-                            tint = AccentRed,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // 2. Denon AVR-1803 Audiophile Status Bar & 1-Tap Switcher
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(SurfaceCard)
-                    .border(1.dp, if (status.audio.isDenonOptical) ToslinkRed.copy(alpha = 0.4f) else CardBorder, RoundedCornerShape(14.dp))
-                    .clickable {
-                        haptics.doubleClick()
-                        scope.launch {
-                            apiClient.toggleAudioOutput()
-                            onRefreshStatus()
-                        }
-                    }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(if (status.audio.isDenonOptical) ToslinkRed else DenonGreen)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Text(
-                            text = if (status.audio.isDenonOptical) "🔴 DENON AVR-1803 (OPTISCH)" else "🔊 TV-LAUTSPRECHER",
-                            color = if (status.audio.isDenonOptical) ToslinkRed else TextWhite,
-                            fontSize = 12.sp,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                            letterSpacing = 0.5.sp
-                        )
-                        Text(
-                            text = if (status.audio.isDenonOptical) "Toslink Bitstream aktiv · Tippen für TV-Speaker" else "Internes Audio · Tippen für Denon",
-                            color = TextMuted,
-                            fontSize = 10.sp
-                        )
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(SurfaceCardVariant)
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = if (status.audio.isDenonOptical) "⇄ TV" else "⇄ Denon",
-                        color = TextWhite,
-                        fontSize = 11.sp,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // 3. Quick Input & Bildmodus Deck (PC, Game Opt, Filmmaker, Cinema)
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(horizontal = 2.dp)
-            ) {
-                item {
-                    QuickChip(
-                        label = "🖥️ PC (HDMI 1)",
-                        highlight = status.currentApp.contains("hdmi1", ignoreCase = true),
-                        accentColor = CyberCyan
-                    ) {
-                        haptics.doubleClick()
-                        scope.launch {
-                            apiClient.quickAction("pc")
-                            onRefreshStatus()
-                        }
-                    }
-                }
-                item {
-                    QuickChip(label = "🎮 Game Opt", accentColor = GeminiPurple) {
-                        haptics.click()
-                        scope.launch { apiClient.setPictureMode("game") }
-                    }
-                }
-                item {
-                    QuickChip(label = "🎬 Filmmaker", accentColor = AmberGlow) {
-                        haptics.click()
-                        scope.launch { apiClient.setPictureMode("filmmaker") }
-                    }
-                }
-                item {
-                    QuickChip(label = "🍿 Cinema", accentColor = AccentBlue) {
-                        haptics.click()
-                        scope.launch { apiClient.setPictureMode("cinema") }
-                    }
-                }
-                item {
-                    QuickChip(label = "🌙 ISF Dunkel", accentColor = TextWhite) {
-                        haptics.click()
-                        scope.launch { apiClient.setPictureMode("isf_dark") }
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        // 4. Touchpad Mode Selector (Gesten | D-Pad | Magic Cursor)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(SurfaceCardVariant)
-                .border(1.dp, CardBorder, RoundedCornerShape(14.dp))
-                .padding(3.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            ModeTab(title = "Gesten", selected = selectedPadMode == 0, modifier = Modifier.weight(1f)) {
-                haptics.tick()
-                selectedPadMode = 0
-                prefs.touchpadMode = 0
-            }
-            ModeTab(title = "Klassik D-Pad", selected = selectedPadMode == 1, modifier = Modifier.weight(1f)) {
-                haptics.tick()
-                selectedPadMode = 1
-                prefs.touchpadMode = 1
-            }
-            ModeTab(title = "Magic Cursor", selected = selectedPadMode == 2, modifier = Modifier.weight(1f)) {
-                haptics.tick()
-                selectedPadMode = 2
-                prefs.touchpadMode = 2
-            }
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        // 5. Main Touchpad / D-Pad Control Box
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        ) {
-            when (selectedPadMode) {
-                0 -> GesturePad(
-                    modifier = Modifier.fillMaxSize(),
-                    onDirection = { dir ->
-                        scope.launch {
-                            apiClient.sendRemoteKey(dir, fast = true)
-                        }
-                    },
-                    onSelect = {
-                        scope.launch {
-                            apiClient.sendRemoteKey("ENTER", fast = true)
-                        }
-                    },
-                    onLongSelect = {
-                        scope.launch {
-                            apiClient.sendRemoteKey("ENTER", fast = false)
-                        }
-                    }
-                )
-                1 -> DPadControl(
-                    modifier = Modifier.fillMaxSize(),
-                    onDirection = { dir ->
-                        scope.launch {
-                            apiClient.sendRemoteKey(dir, fast = true)
-                        }
-                    },
-                    onSelect = {
-                        scope.launch {
-                            apiClient.sendRemoteKey("ENTER", fast = true)
-                        }
-                    }
-                )
-                2 -> MagicCursorPad(
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        // 6. Quick Remote Actions Strip (Back, Home, Play, Mute, Text, 123, Vol-/Vol+)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
-                .background(SurfaceCard)
-                .border(1.dp, CardBorder, RoundedCornerShape(18.dp))
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RemoteActionButton(icon = Icons.Default.ArrowBack, label = "Zurück") {
-                haptics.click()
-                scope.launch { apiClient.sendRemoteKey("BACK") }
-            }
-
-            RemoteActionButton(icon = Icons.Default.Home, label = "Home") {
-                haptics.click()
-                scope.launch { apiClient.sendRemoteKey("HOME") }
-            }
-
-            RemoteActionButton(icon = Icons.Default.PlayArrow, label = "Play/Pause") {
-                haptics.click()
-                scope.launch { apiClient.sendRemoteKey("PLAY") }
-            }
-
-            RemoteActionButton(icon = Icons.Default.VolumeMute, label = "Mute") {
-                haptics.click()
-                scope.launch { apiClient.quickAction("mute") }
-            }
-
-            RemoteActionButton(icon = Icons.Default.Keyboard, label = "Tastatur") {
-                haptics.click()
-                showTextDialog = true
-            }
-
-            RemoteActionButton(icon = Icons.Default.Dialpad, label = "123") {
-                haptics.click()
-                showNumPad = true
-            }
-
-            // Volume Steppers (Tactile notch haptics)
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(SurfaceCardVariant)
-                    .border(1.dp, CardBorder, RoundedCornerShape(12.dp)),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .clickable {
-                            haptics.tick(scale = 0.8f)
-                            scope.launch { apiClient.quickAction("vol_down") }
-                        }
-                        .padding(horizontal = 10.dp, vertical = 8.dp)
-                ) {
-                    Text(text = "–", color = TextWhite, fontSize = 17.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                }
-                Box(
-                    modifier = Modifier
-                        .clickable {
-                            haptics.tick(scale = 0.8f)
-                            scope.launch { apiClient.quickAction("vol_up") }
-                        }
-                        .padding(horizontal = 10.dp, vertical = 8.dp)
-                ) {
-                    Text(text = "+", color = TextWhite, fontSize = 17.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // 7. Favoriten Dock (PC HDMI 1 + Top Apps from Modern LG Hub)
-        Column {
-            Text(
-                text = "FAVORITEN (MODERN LG HUB)",
-                color = TextMuted,
-                fontSize = 10.sp,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                letterSpacing = 1.sp,
-                modifier = Modifier.padding(bottom = 5.dp)
+        val usable = state.isOnline && !state.status.isStandby
+        if (usable) {
+            StateChips(
+                state = state,
+                onSound = { haptics.confirm(); onIntent(RemoteIntent.ToggleSound) },
+                onSoundMenu = { haptics.heavy(); sheet = Sheet.AUDIO },
+                onScreen = { haptics.confirm(); onIntent(RemoteIntent.ToggleScreen) },
+                onPc = { haptics.confirm(); onIntent(RemoteIntent.Pc) },
+                onPicture = { haptics.click(); sheet = Sheet.PICTURE },
             )
+            Spacer(Modifier.height(16.dp))
+            PadModeSwitch(padMode) { haptics.tick(); onPadModeChange(it) }
+            Spacer(Modifier.height(12.dp))
+        }
 
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(vertical = 2.dp)
-            ) {
-                items(apps.take(8)) { app ->
-                    DockAppItem(
-                        app = app,
-                        iconUrl = apiClient.getAppIconUrl(app.id),
-                        onClick = {
-                            haptics.doubleClick()
-                            scope.launch {
-                                apiClient.launchApp(app.id)
-                                onRefreshStatus()
-                            }
-                        }
-                    )
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f),
+        ) {
+            AnimatedContent(
+                targetState = if (usable) padMode else -1,
+                transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
+                label = "pad",
+            ) { mode ->
+                val padModifier = Modifier.fillMaxSize()
+                when (mode) {
+                    -1 -> OfflineCard(state, hubAddress, onIntent, onOpenSettings, padModifier)
+                    1 -> DPadControl(padModifier, onDirection = { onIntent(RemoteIntent.Key(it.key)) }, onSelect = { onIntent(RemoteIntent.Key("ENTER")) })
+                    2 -> CursorPad(padModifier)
+                    else -> GesturePad(padModifier, onDirection = { onIntent(RemoteIntent.Key(it.key)) }, onSelect = { onIntent(RemoteIntent.Key("ENTER")) })
                 }
             }
         }
-    }
 
-    // Audio Output Dialog
-    if (showAudioDialog) {
-        AudioOutputDialog(
-            currentAudio = status.audio,
-            onSelectOutput = { output ->
-                scope.launch {
-                    apiClient.setAudioOutput(output)
-                    onRefreshStatus()
-                }
-            },
-            onDismiss = { showAudioDialog = false }
+        Spacer(Modifier.height(16.dp))
+        NavRow(
+            enabled = usable,
+            onKey = { haptics.click(); onIntent(RemoteIntent.Key(it)) },
+            onKeyboard = { haptics.click(); sheet = Sheet.KEYBOARD },
+            onMore = { haptics.click(); sheet = Sheet.MORE },
         )
-    }
-
-    // Text Input Dialog
-    if (showTextDialog) {
-        TextInputDialog(
-            onSendText = { text ->
-                scope.launch { apiClient.sendText(text) }
-            },
-            onSendEnter = {
-                scope.launch { apiClient.sendEnter() }
-            },
-            onDismiss = { showTextDialog = false }
+        Spacer(Modifier.height(12.dp))
+        VolumeBar(
+            state = state,
+            enabled = usable,
+            onDown = { haptics.tick(); onIntent(RemoteIntent.VolumeDown) },
+            onUp = { haptics.tick(); onIntent(RemoteIntent.VolumeUp) },
+            onMute = { haptics.click(); onIntent(RemoteIntent.Mute) },
         )
+        Spacer(Modifier.height(16.dp))
+        Favorites(state, iconUrl) { haptics.confirm(); onIntent(RemoteIntent.Launch(it.id)) }
+        Spacer(Modifier.height(12.dp))
     }
 
-    // 0-9 NumPad Sheet
-    if (showNumPad) {
-        NumPadSheet(
-            onSendKey = { key ->
-                scope.launch { apiClient.sendRemoteKey(key) }
-            },
-            onDismiss = { showNumPad = false }
+    when (sheet) {
+        Sheet.KEYBOARD -> KeyboardSheet(
+            onTextChange = { onIntent(RemoteIntent.Text(it)) },
+            onEnter = { onIntent(RemoteIntent.Enter) },
+            onDismiss = { sheet = Sheet.NONE },
+        )
+        Sheet.MORE -> MoreKeysSheet(onKey = { onIntent(RemoteIntent.Key(it)) }, onDismiss = { sheet = Sheet.NONE })
+        Sheet.PICTURE -> PictureModeSheet(onSelect = { onIntent(RemoteIntent.Picture(it)) }, onDismiss = { sheet = Sheet.NONE })
+        Sheet.AUDIO -> AudioOutputSheet(state.status.audio, onSelect = { onIntent(RemoteIntent.Sound(it)) }, onDismiss = { sheet = Sheet.NONE })
+        Sheet.NONE -> Unit
+    }
+}
+
+/** Subtle top glow tinted with the running app's brand colour (Netflix red, Disney blue, …). */
+private fun ambientColor(state: TvState): Color {
+    if (!state.isOnline) return Color.Transparent
+    if (state.status.screenOff) return StatusWarn
+    if (state.status.currentAppId.contains("hdmi")) return Accent
+    val brand = state.currentApp?.brandColor?.let { Color(it) } ?: return Accent
+    val l = brand.luminance()
+    return if (l < 0.04f || l > 0.85f) Accent else brand
+}
+
+@Composable
+private fun Header(state: TvState, onPower: () -> Unit, onOpenSettings: () -> Unit) {
+    val (dotColor, line) = statusLine(state)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StatusDot(dotColor, pulsing = state.connection == Connection.CONNECTING || state.waking)
+                Spacer(Modifier.width(10.dp))
+                Text("LG OLED G4", style = MaterialTheme.typography.titleLarge, color = TextPrimary)
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(
+                line,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 18.dp),
+            )
+        }
+        RoundButton(Icons.Rounded.Settings, "Einstellungen", size = 44.dp, iconSize = 22.dp, container = Color.Transparent, tint = TextSecondary, onClick = onOpenSettings)
+        Spacer(Modifier.width(8.dp))
+        val on = state.isOn
+        RoundButton(
+            Icons.Rounded.PowerSettingsNew,
+            if (on) "Ausschalten" else "Einschalten",
+            size = 48.dp,
+            iconSize = 22.dp,
+            container = if (on) Surface2 else AccentDim,
+            tint = if (on) StatusOff else Accent,
+            enabled = !state.waking,
+            onClick = onPower,
         )
     }
 }
 
+private fun statusLine(state: TvState): Pair<Color, String> {
+    val s = state.status
+    return when {
+        state.waking -> StatusWarn to "Wird eingeschaltet …"
+        state.connection == Connection.CONNECTING -> TextTertiary to "Verbinde …"
+        state.connection == Connection.OFFLINE -> StatusOff to "Aus oder nicht erreichbar"
+        s.isStandby -> StatusWarn to "Standby"
+        s.screenOff -> StatusWarn to "Bildschirm aus · ${s.audio.outputLabel}"
+        else -> {
+            val app = state.appTitle().ifBlank { "Eingeschaltet" }
+            StatusOn to "$app · ${s.audio.outputLabel}"
+        }
+    }
+}
+
 @Composable
-private fun QuickChip(
-    label: String,
-    highlight: Boolean = false,
-    accentColor: Color = TextWhite,
-    onClick: () -> Unit
+private fun StateChips(
+    state: TvState,
+    onSound: () -> Unit,
+    onSoundMenu: () -> Unit,
+    onScreen: () -> Unit,
+    onPc: () -> Unit,
+    onPicture: () -> Unit,
 ) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(if (highlight) accentColor.copy(alpha = 0.2f) else SurfaceCard)
-            .border(1.dp, if (highlight) accentColor else CardBorder, RoundedCornerShape(10.dp))
-            .clickable { onClick() }
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            color = if (highlight) accentColor else TextWhite,
-            fontSize = 11.sp,
-            fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
-        )
+    val s = state.status
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        val m = Modifier.weight(1f)
+        Chip(Icons.Rounded.Speaker, s.audio.chipLabel, active = s.audio.isOptical, modifier = m, onClick = onSound, onLongClick = onSoundMenu)
+        Chip(Icons.Rounded.DesktopAccessDisabled, if (s.screenOff) "Bild an" else "Bild aus", active = s.screenOff, modifier = m, onClick = onScreen)
+        Chip(Icons.Rounded.Computer, "PC", active = s.currentAppId.endsWith("hdmi1"), modifier = m, onClick = onPc)
+        Chip(Icons.Rounded.Tune, "Modus", active = false, modifier = m, onClick = onPicture)
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ModeTab(
-    title: String,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (selected) SurfaceCardElevated else Color.Transparent)
-            .border(1.dp, if (selected) CardBorder else Color.Transparent, RoundedCornerShape(12.dp))
-            .clickable { onClick() }
-            .padding(vertical = 7.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = title,
-            color = if (selected) TextWhite else TextMuted,
-            fontSize = 12.sp,
-            fontWeight = if (selected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
-        )
-    }
-}
-
-@Composable
-private fun RemoteActionButton(
+private fun Chip(
     icon: ImageVector,
     label: String,
-    onClick: () -> Unit
+    active: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
 ) {
-    Box(
-        modifier = Modifier
-            .size(38.dp)
+    val bg by animateColorAsState(if (active) AccentDim else Surface1, tween(200), label = "chip")
+    val fg by animateColorAsState(if (active) Accent else TextPrimary, tween(200), label = "chipFg")
+    Row(
+        modifier
+            .height(40.dp)
             .clip(CircleShape)
-            .clickable { onClick() },
-        contentAlignment = Alignment.Center
+            .background(bg)
+            .border(1.dp, if (active) Accent.copy(alpha = 0.35f) else Hairline, CircleShape)
+            .combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
+            .padding(horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = TextWhite,
-            modifier = Modifier.size(20.dp)
-        )
+        Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(5.dp))
+        Text(label, color = fg, style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
     }
 }
 
 @Composable
-private fun DockAppItem(
-    app: LauncherApp,
-    iconUrl: String,
-    onClick: () -> Unit
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .width(58.dp)
-            .clickable { onClick() }
-    ) {
-        Box(
-            modifier = Modifier
-                .size(50.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(SurfaceCard)
-                .border(1.dp, CardBorder, RoundedCornerShape(14.dp)),
-            contentAlignment = Alignment.Center
+private fun PadModeSwitch(mode: Int, onChange: (Int) -> Unit) {
+    val modes = listOf(
+        Triple(Icons.Rounded.Swipe, "Wischen", 0),
+        Triple(Icons.Rounded.Gamepad, "Steuerkreuz", 1),
+        Triple(Icons.Rounded.Mouse, "Mauszeiger", 2),
+    )
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+        Row(
+            Modifier
+                .clip(CircleShape)
+                .background(Surface1)
+                .border(1.dp, Hairline, CircleShape)
+                .padding(3.dp),
         ) {
-            AsyncImage(
-                model = iconUrl,
-                contentDescription = app.title,
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(8.dp))
+            modes.forEach { (icon, label, value) ->
+                val selected = mode == value
+                Row(
+                    Modifier
+                        .height(32.dp)
+                        .clip(CircleShape)
+                        .background(if (selected) Surface2 else Color.Transparent)
+                        .pressable(role = Role.Tab) { onChange(value) }
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(icon, contentDescription = null, tint = if (selected) TextPrimary else TextTertiary, modifier = Modifier.size(16.dp))
+                    if (selected) {
+                        Spacer(Modifier.width(6.dp))
+                        Text(label, style = MaterialTheme.typography.labelMedium, color = TextPrimary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NavRow(enabled: Boolean, onKey: (String) -> Unit, onKeyboard: () -> Unit, onMore: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        RoundButton(Icons.AutoMirrored.Rounded.ArrowBack, "Zurück", enabled = enabled) { onKey("BACK") }
+        RoundButton(Icons.Rounded.Home, "Home", enabled = enabled) { onKey("HOME") }
+        RoundButton(Icons.Rounded.PlayArrow, "Wiedergabe/Pause", enabled = enabled) { onKey("PLAY") }
+        RoundButton(Icons.Rounded.Keyboard, "Tastatur", enabled = enabled, onClick = onKeyboard)
+        RoundButton(Icons.Rounded.MoreHoriz, "Weitere Tasten", enabled = enabled, onClick = onMore)
+    }
+}
+
+@Composable
+private fun VolumeBar(state: TvState, enabled: Boolean, onDown: () -> Unit, onUp: () -> Unit, onMute: () -> Unit) {
+    val audio = state.status.audio
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .card(CircleShape),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RoundButton(Icons.Rounded.Remove, "Leiser", container = Color.Transparent, enabled = enabled, onClick = onDown)
+        Row(
+            Modifier
+                .weight(1f)
+                .fillMaxSize()
+                .pressable(enabled = enabled, onClick = onMute),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                if (audio.muted) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
+                contentDescription = if (audio.muted) "Ton an" else "Stumm",
+                tint = if (audio.muted) StatusWarn else TextSecondary,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                when {
+                    !state.isOnline -> "Lautstärke"
+                    audio.muted -> "Stumm"
+                    else -> audio.volume.toString()
+                },
+                style = MaterialTheme.typography.titleMedium,
+                color = if (audio.muted) StatusWarn else TextPrimary,
             )
         }
-        Spacer(modifier = Modifier.height(3.dp))
-        Text(
-            text = app.title,
-            color = TextMuted,
-            fontSize = 10.sp,
-            maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-        )
+        RoundButton(Icons.Rounded.Add, "Lauter", container = Color.Transparent, enabled = enabled, onClick = onUp)
+    }
+}
+
+@Composable
+private fun Favorites(state: TvState, iconUrl: (String) -> String, onLaunch: (LauncherApp) -> Unit) {
+    val favorites = remember(state.apps) {
+        state.apps.filter { it.visible && !it.isInput && it.type != "home" }.take(10)
+    }
+    if (favorites.isEmpty()) {
+        Spacer(Modifier.height(52.dp))
+        return
+    }
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(horizontal = 2.dp)) {
+        items(favorites, key = { it.id }) { app ->
+            val running = app.id == state.status.currentAppId
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .border(if (running) 2.dp else 0.dp, if (running) Accent else Color.Transparent, RoundedCornerShape(16.dp))
+                    .padding(if (running) 3.dp else 0.dp)
+                    .pressable { onLaunch(app) },
+            ) {
+                AppIcon(app, iconUrl(app.id), size = if (running) 46.dp else 52.dp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun OfflineCard(
+    state: TvState,
+    hubAddress: String,
+    onIntent: (RemoteIntent) -> Unit,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier,
+) {
+    Column(
+        modifier.card(RoundedCornerShape(32.dp)).padding(28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        when {
+            state.connection == Connection.CONNECTING || state.waking -> {
+                CircularProgressIndicator(color = Accent, strokeWidth = 2.dp, modifier = Modifier.size(32.dp))
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    if (state.waking) "Fernseher startet …" else "Suche Fernseher …",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+            else -> {
+                Icon(
+                    if (state.status.isStandby) Icons.Rounded.Tv else Icons.Rounded.WifiOff,
+                    contentDescription = null,
+                    tint = TextTertiary,
+                    modifier = Modifier.size(40.dp),
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    if (state.status.isStandby) "Fernseher im Standby" else "Fernseher ist aus",
+                    style = MaterialTheme.typography.titleMedium,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Oder der Hub unter $hubAddress ist nicht erreichbar.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(24.dp))
+                Button(
+                    onClick = { onIntent(RemoteIntent.Power) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+                ) {
+                    Icon(Icons.Rounded.PowerSettingsNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Einschalten")
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { onIntent(RemoteIntent.Retry) }) { Text("Erneut suchen", color = TextPrimary) }
+                    OutlinedButton(onClick = onOpenSettings) { Text("Einstellungen", color = TextPrimary) }
+                }
+            }
+        }
     }
 }

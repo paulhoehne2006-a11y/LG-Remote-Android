@@ -1,26 +1,39 @@
 package com.modernlghub.remote.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.Power
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -28,106 +41,86 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.modernlghub.remote.data.SmartDevice
-import com.modernlghub.remote.data.TvApiClient
-import com.modernlghub.remote.ui.components.Haptics
-import com.modernlghub.remote.ui.theme.CardBorder
-import com.modernlghub.remote.ui.theme.DenonGreen
-import com.modernlghub.remote.ui.theme.OledBlack
-import com.modernlghub.remote.ui.theme.SurfaceCard
-import com.modernlghub.remote.ui.theme.SurfaceCardVariant
-import com.modernlghub.remote.ui.theme.TextMuted
-import com.modernlghub.remote.ui.theme.TextWhite
+import com.modernlghub.remote.ui.components.EmptyHint
+import com.modernlghub.remote.ui.components.RoundButton
+import com.modernlghub.remote.ui.components.pressable
+import com.modernlghub.remote.ui.components.rememberHaptics
+import com.modernlghub.remote.ui.theme.Hairline
+import com.modernlghub.remote.ui.theme.StatusWarn
+import com.modernlghub.remote.ui.theme.Surface1
+import com.modernlghub.remote.ui.theme.Surface2
+import com.modernlghub.remote.ui.theme.TextPrimary
+import com.modernlghub.remote.ui.theme.TextSecondary
+import com.modernlghub.remote.ui.theme.TextTertiary
 import kotlinx.coroutines.launch
 
+/** SmartThings lights and plugs, proxied by the hub (/api/smartthings/devices and /toggle). */
 @Composable
 fun SmartHomeScreen(
-    apiClient: TvApiClient
+    load: suspend () -> List<SmartDevice>?,
+    toggle: suspend (String) -> Boolean?,
+    modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-    val haptics = remember { Haptics(context) }
+    val haptics = rememberHaptics()
     val scope = rememberCoroutineScope()
-    var devices by remember { mutableStateOf<List<SmartDevice>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    var devices by remember { mutableStateOf<List<SmartDevice>?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var failed by remember { mutableStateOf(false) }
+    val busy = remember { mutableStateMapOf<String, Boolean>() }
 
-    suspend fun loadDevices() {
-        isLoading = true
-        devices = apiClient.getSmartDevices()
-        isLoading = false
+    suspend fun reload() {
+        loading = true
+        val result = load()
+        failed = result == null
+        if (result != null) devices = result
+        loading = false
     }
+    LaunchedEffect(Unit) { reload() }
 
-    LaunchedEffect(Unit) {
-        loadDevices()
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(OledBlack)
-            .padding(16.dp)
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    text = "Smart Home",
-                    color = TextWhite,
-                    fontSize = 22.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                )
-                Text(
-                    text = "SmartThings Steuerung",
-                    color = TextMuted,
-                    fontSize = 13.sp
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(SurfaceCard)
-                    .border(1.dp, CardBorder, RoundedCornerShape(10.dp))
-                    .clickable {
-                        haptics.click()
-                        scope.launch { loadDevices() }
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text("Zuhause", style = MaterialTheme.typography.headlineSmall, color = TextPrimary)
+                    Text("SmartThings über den Hub", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                }
+                if (loading) {
+                    CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+                } else {
+                    RoundButton(Icons.Rounded.Refresh, "Aktualisieren", size = 44.dp, iconSize = 22.dp, container = Surface1, tint = TextSecondary) {
+                        scope.launch { reload() }
                     }
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-            ) {
-                Text(text = "Aktualisieren 🔄", color = TextWhite, fontSize = 12.sp)
+                }
             }
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        if (isLoading && devices.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(text = "Lade SmartThings Geräte...", color = TextMuted, fontSize = 14.sp)
+        val list = devices.orEmpty()
+        if (!loading && list.isEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                EmptyHint(
+                    if (failed) "SmartThings nicht erreichbar" else "Keine Geräte",
+                    if (failed) "Der Hub hat nicht geantwortet oder kein SmartThings-Token." else "Der Hub hat keine bekannten Lichter oder Steckdosen gefunden.",
+                )
             }
-        } else if (devices.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(text = "Keine Geräte gefunden oder SmartThings Token nicht aktiv.", color = TextMuted, fontSize = 14.sp)
-            }
-        } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(devices) { dev ->
-                    SmartDeviceItem(
-                        device = dev,
-                        onToggle = {
-                            haptics.click()
-                            scope.launch {
-                                apiClient.toggleSmartDevice(dev.id)
-                                loadDevices()
-                            }
-                        }
-                    )
+        }
+        items(list, key = { it.id }) { device ->
+            DeviceTile(device, busy = busy[device.id] == true) {
+                haptics.confirm()
+                val before = device.isOn
+                devices = devices?.map { if (it.id == device.id) it.copy(isOn = !before) else it }
+                busy[device.id] = true
+                scope.launch {
+                    val now = toggle(device.id)
+                    devices = devices?.map { if (it.id == device.id) it.copy(isOn = now ?: before) else it }
+                    busy.remove(device.id)
                 }
             }
         }
@@ -135,64 +128,43 @@ fun SmartHomeScreen(
 }
 
 @Composable
-private fun SmartDeviceItem(
-    device: SmartDevice,
-    onToggle: () -> Unit
-) {
-    val isOn = device.state.equals("on", ignoreCase = true)
-
-    Box(
-        modifier = Modifier
+private fun DeviceTile(device: SmartDevice, busy: Boolean, onClick: () -> Unit) {
+    val on = device.isOn
+    val bg by animateColorAsState(if (on) StatusWarn.copy(alpha = 0.14f) else Surface1, tween(250), label = "devBg")
+    val shape = RoundedCornerShape(24.dp)
+    Column(
+        Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(SurfaceCard)
-            .border(
-                width = 1.dp,
-                color = if (isOn) DenonGreen.copy(alpha = 0.6f) else CardBorder,
-                shape = RoundedCornerShape(16.dp)
-            )
-            .clickable { onToggle() }
-            .padding(16.dp)
+            .aspectRatio(1.25f)
+            .clip(shape)
+            .background(bg)
+            .border(1.dp, if (on) StatusWarn.copy(alpha = 0.35f) else Hairline, shape)
+            .pressable(onClick = onClick)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        Box(
+            Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(if (on) StatusWarn else Surface2),
+            contentAlignment = Alignment.Center,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = if (device.type == "plug") "🔌" else "💡",
-                    fontSize = 24.sp,
-                    modifier = Modifier.padding(end = 12.dp)
-                )
-                Column {
-                    Text(
-                        text = device.name,
-                        color = TextWhite,
-                        fontSize = 16.sp,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-                    )
-                    Text(
-                        text = if (isOn) "Eingeschaltet" else "Ausgeschaltet",
-                        color = if (isOn) DenonGreen else TextMuted,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (isOn) DenonGreen else SurfaceCardVariant)
-                    .padding(horizontal = 14.dp, vertical = 6.dp)
-            ) {
-                Text(
-                    text = if (isOn) "AN" else "AUS",
-                    color = if (isOn) OledBlack else TextMuted,
-                    fontSize = 12.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+            if (busy) {
+                CircularProgressIndicator(color = if (on) Color.Black else TextPrimary, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+            } else {
+                Icon(
+                    if (device.type == "plug") Icons.Rounded.Power else Icons.Rounded.Lightbulb,
+                    contentDescription = null,
+                    tint = if (on) Color.Black else TextSecondary,
+                    modifier = Modifier.size(22.dp),
                 )
             }
+        }
+        Column {
+            Text(device.name, style = MaterialTheme.typography.titleSmall, color = TextPrimary, maxLines = 1)
+            Spacer(Modifier.height(2.dp))
+            Text(if (on) "An" else "Aus", style = MaterialTheme.typography.bodySmall, color = if (on) StatusWarn else TextTertiary)
         }
     }
 }

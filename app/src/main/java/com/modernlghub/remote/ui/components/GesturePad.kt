@@ -1,203 +1,240 @@
 package com.modernlghub.remote.ui.components
 
-import androidx.compose.animation.animateColorAsState
+import android.os.SystemClock
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.modernlghub.remote.ui.theme.CardBorder
-import com.modernlghub.remote.ui.theme.CyberCyan
-import com.modernlghub.remote.ui.theme.SurfaceCard
-import com.modernlghub.remote.ui.theme.SurfaceCardVariant
-import com.modernlghub.remote.ui.theme.TextMuted
-import com.modernlghub.remote.ui.theme.TextWhite
+import com.modernlghub.remote.ui.theme.Accent
+import com.modernlghub.remote.ui.theme.Hairline
+import com.modernlghub.remote.ui.theme.Surface1
+import com.modernlghub.remote.ui.theme.TextTertiary
 import kotlin.math.abs
+import kotlin.math.sign
 
+enum class Direction(val key: String, val icon: ImageVector) {
+    UP("UP", Icons.Rounded.KeyboardArrowUp),
+    DOWN("DOWN", Icons.Rounded.KeyboardArrowDown),
+    LEFT("LEFT", Icons.AutoMirrored.Rounded.KeyboardArrowLeft),
+    RIGHT("RIGHT", Icons.AutoMirrored.Rounded.KeyboardArrowRight),
+}
+
+/**
+ * Swipe surface in the style of a modern streaming remote:
+ * - every ~36 dp of travel = one step (axis-locked, so diagonals never double-fire)
+ * - swipe far and keep the finger resting = continuous scrolling
+ * - tap anywhere = OK
+ */
 @Composable
 fun GesturePad(
     modifier: Modifier = Modifier,
-    onDirection: (String) -> Unit,
+    onDirection: (Direction) -> Unit,
     onSelect: () -> Unit,
-    onLongSelect: () -> Unit,
-    onBack: (() -> Unit)? = null
 ) {
-    val context = LocalContext.current
-    val haptics = remember { Haptics(context) }
-    val stepThreshold = 55f // Snappy responsive step threshold
+    val haptics = rememberHaptics()
+    val currentOnDirection by rememberUpdatedState(onDirection)
+    val currentOnSelect by rememberUpdatedState(onSelect)
 
-    var accumulatedX by remember { mutableFloatStateOf(0f) }
-    var accumulatedY by remember { mutableFloatStateOf(0f) }
-
-    var isTouching by remember { mutableStateOf(false) }
+    var touching by remember { mutableStateOf(false) }
     var touchPos by remember { mutableStateOf(Offset.Zero) }
-    var activeDirection by remember { mutableStateOf<String?>(null) }
+    var flashDir by remember { mutableStateOf<Direction?>(null) }
+    var flashCount by remember { mutableIntStateOf(0) }
+    val flash = remember { Animatable(0f) }
+    val glow = remember { Animatable(0f) }
 
-    val upTint by animateColorAsState(if (activeDirection == "up") CyberCyan else CardBorder, tween(180))
-    val downTint by animateColorAsState(if (activeDirection == "down") CyberCyan else CardBorder, tween(180))
-    val leftTint by animateColorAsState(if (activeDirection == "left") CyberCyan else CardBorder, tween(180))
-    val rightTint by animateColorAsState(if (activeDirection == "right") CyberCyan else CardBorder, tween(180))
+    LaunchedEffect(flashCount) {
+        if (flashCount == 0) return@LaunchedEffect
+        flash.snapTo(1f)
+        flash.animateTo(0f, tween(320))
+    }
+    LaunchedEffect(touching) { glow.animateTo(if (touching) 1f else 0f, tween(if (touching) 120 else 380)) }
 
+    val shape = RoundedCornerShape(32.dp)
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(32.dp))
-            .background(SurfaceCard)
-            .border(1.dp, CardBorder, RoundedCornerShape(32.dp))
+            .clip(shape)
+            .background(Surface1)
+            .border(1.dp, Hairline, shape)
+            .semantics { contentDescription = "Wischfeld: Wischen zum Navigieren, Tippen für OK" }
             .drawBehind {
-                if (isTouching) {
+                if (glow.value > 0f) {
                     drawCircle(
                         brush = Brush.radialGradient(
-                            colors = listOf(
-                                CyberCyan.copy(alpha = 0.22f),
-                                Color.Transparent
-                            ),
+                            colors = listOf(Accent.copy(alpha = 0.18f * glow.value), Color.Transparent),
                             center = touchPos,
-                            radius = 160f
-                        )
+                            radius = 140.dp.toPx(),
+                        ),
+                        radius = 140.dp.toPx(),
+                        center = touchPos,
                     )
                 }
             }
             .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = {
-                        haptics.click()
-                        onSelect()
-                    },
-                    onLongPress = {
-                        haptics.heavyClick()
-                        onLongSelect()
-                    }
-                )
-            }
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = { offset ->
-                        isTouching = true
-                        touchPos = offset
-                        accumulatedX = 0f
-                        accumulatedY = 0f
-                    },
-                    onDragEnd = {
-                        isTouching = false
-                        activeDirection = null
-                    },
-                    onDragCancel = {
-                        isTouching = false
-                        activeDirection = null
-                    },
-                    onDrag = { change, dragAmount ->
-                        change.consume()
-                        touchPos = change.position
-                        accumulatedX += dragAmount.x
-                        accumulatedY += dragAmount.y
+                val step = 36.dp.toPx()
+                val repeatReach = step * 2.5f
+                val restRadius = 6.dp.toPx()
+                val slop = viewConfiguration.touchSlop
 
-                        if (abs(accumulatedX) >= stepThreshold) {
-                            if (accumulatedX > 0) {
-                                haptics.tick()
-                                activeDirection = "right"
-                                onDirection("right")
-                            } else {
-                                haptics.tick()
-                                activeDirection = "left"
-                                onDirection("left")
-                            }
-                            accumulatedX = 0f
-                        }
+                fun fire(dir: Direction) {
+                    haptics.tick()
+                    flashDir = dir
+                    flashCount++
+                    currentOnDirection(dir)
+                }
 
-                        if (abs(accumulatedY) >= stepThreshold) {
-                            if (accumulatedY > 0) {
-                                haptics.tick()
-                                activeDirection = "down"
-                                onDirection("down")
-                            } else {
-                                haptics.tick()
-                                activeDirection = "up"
-                                onDirection("up")
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    touching = true
+                    touchPos = down.position
+                    var dragging = false
+                    var acc = Offset.Zero
+                    var lastDir: Direction? = null
+                    // "Resting" = finger stays within restRadius of this anchor (ignores jitter).
+                    var anchor = down.position
+                    var lastMove = SystemClock.uptimeMillis()
+                    var lastRepeat = 0L
+
+                    while (true) {
+                        val event = withTimeoutOrNull(40L) { awaitPointerEvent() }
+                        val now = SystemClock.uptimeMillis()
+                        if (event != null) {
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) {
+                                if (!dragging) {
+                                    haptics.click()
+                                    currentOnSelect()
+                                }
+                                break
                             }
-                            accumulatedY = 0f
+                            touchPos = change.position
+                            if (!dragging && (change.position - down.position).getDistance() > slop) dragging = true
+                            if (dragging) {
+                                val delta = change.positionChange()
+                                change.consume()
+                                if ((change.position - anchor).getDistance() > restRadius) {
+                                    anchor = change.position
+                                    lastMove = now
+                                }
+                                acc += delta
+                                val ax = abs(acc.x)
+                                val ay = abs(acc.y)
+                                if (maxOf(ax, ay) >= step) {
+                                    val horizontal = ax >= ay
+                                    val dir = if (horizontal) {
+                                        if (acc.x > 0) Direction.RIGHT else Direction.LEFT
+                                    } else {
+                                        if (acc.y > 0) Direction.DOWN else Direction.UP
+                                    }
+                                    fire(dir)
+                                    acc = if (horizontal) Offset(acc.x - sign(acc.x) * step, 0f)
+                                    else Offset(0f, acc.y - sign(acc.y) * step)
+                                    lastDir = dir
+                                    lastRepeat = now
+                                }
+                            }
+                        }
+                        // Swiped far and now resting → keep scrolling in that direction.
+                        val dir = lastDir
+                        if (dragging && dir != null && now - lastMove > 300 && now - lastRepeat > 120) {
+                            val travel = touchPos - down.position
+                            val reach = when (dir) {
+                                Direction.UP -> -travel.y
+                                Direction.DOWN -> travel.y
+                                Direction.LEFT -> -travel.x
+                                Direction.RIGHT -> travel.x
+                            }
+                            if (reach > repeatReach) {
+                                fire(dir)
+                                lastRepeat = now
+                            }
                         }
                     }
-                )
+                    touching = false
+                }
             },
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
-        // Direction Chevrons (ambient indicators)
-        Text(
-            text = "▲",
-            color = upTint,
-            fontSize = 14.sp,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 14.dp)
-        )
-        Text(
-            text = "▼",
-            color = downTint,
-            fontSize = 14.sp,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp)
-        )
-        Text(
-            text = "◀",
-            color = leftTint,
-            fontSize = 14.sp,
-            modifier = Modifier.align(Alignment.CenterStart).padding(start = 16.dp)
-        )
-        Text(
-            text = "▶",
-            color = rightTint,
-            fontSize = 14.sp,
-            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp)
-        )
-
-        // Center OK Dial
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(CircleShape)
-                    .background(SurfaceCardVariant)
-                    .border(1.5.dp, if (isTouching) CyberCyan.copy(alpha = 0.6f) else CardBorder, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "OK",
-                    color = TextWhite,
-                    fontSize = 18.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                    letterSpacing = 1.sp
-                )
+        // Edge arrows light up on each step.
+        Direction.entries.forEach { dir ->
+            val align = when (dir) {
+                Direction.UP -> Alignment.TopCenter
+                Direction.DOWN -> Alignment.BottomCenter
+                Direction.LEFT -> Alignment.CenterStart
+                Direction.RIGHT -> Alignment.CenterEnd
             }
-            Text(
-                text = "Wischen für Schritte · Tippen für OK",
-                color = TextMuted,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(top = 14.dp)
+            val lit = if (flashDir == dir) flash.value else 0f
+            Icon(
+                dir.icon,
+                contentDescription = null,
+                tint = lerpColor(TextTertiary.copy(alpha = 0.5f), Accent, lit),
+                modifier = Modifier
+                    .align(align)
+                    .padding(14.dp)
+                    .size(28.dp),
             )
         }
+        // Centre target: purely visual, the whole surface is tappable.
+        Box(
+            Modifier
+                .size(72.dp)
+                .clip(CircleShape)
+                .border(1.dp, Hairline, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("OK", color = TextTertiary, style = MaterialTheme.typography.labelLarge)
+        }
+        Text(
+            "Wischen · Tippen für OK",
+            color = TextTertiary,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 48.dp)
+                .alpha(1f - glow.value),
+        )
     }
 }
+
+internal fun lerpColor(a: Color, b: Color, t: Float): Color = Color(
+    red = a.red + (b.red - a.red) * t,
+    green = a.green + (b.green - a.green) * t,
+    blue = a.blue + (b.blue - a.blue) * t,
+    alpha = a.alpha + (b.alpha - a.alpha) * t,
+)

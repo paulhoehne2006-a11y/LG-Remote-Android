@@ -2,21 +2,24 @@ package com.modernlghub.remote.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val OledBlack = Color(0xFF040406)
-val SurfaceCard = Color(0xFF101218)
-val SurfaceCardVariant = Color(0xFF181A22)
-val SurfaceCardElevated = Color(0xFF20232E)
-val CardBorder = Color(0xFF262938)
-val GlassBorder = Color(0x334B5563)
+/*
+ * "Obsidian" palette: true black for the OLED panel, three neutral surface steps,
+ * one accent, and two status colours. Nothing else.
+ */
+val Obsidian = Color(0xFF000000)
+val Surface1 = Color(0xFF111113)
+val Surface2 = Color(0xFF1A1A1E)
+val Surface3 = Color(0xFF242429)
+val Hairline = Color(0xFF2C2C32)
 
-val DenonGreen = Color(0xFF34C759)
-val ToslinkRed = Color(0xFFFF334B)
-val AccentRed = Color(0xFFFF453A)
-val AccentBlue = Color(0xFF0A84FF)
-val CyberCyan = Color(0xFF00E5FF)
-val GeminiPurple = Color(0xFFBF5AF2)
-val AmberGlow = Color(0xFFFF9F0A)
+val TextPrimary = Color(0xFFF4F4F6)
+val TextSecondary = Color(0xFFA0A0A8)
+val TextTertiary = Color(0xFF6B6B73)
 
-val TextWhite = Color(0xFFFFFFFF)
-val TextMuted = Color(0xFF8E8E93)
-val TextSubtle = Color(0xFF636366)
+/** The single accent. A cool, slightly luminous blue that reads well on black. */
+val Accent = Color(0xFF8AB4FF)
+val AccentDim = Color(0xFF8AB4FF).copy(alpha = 0.16f)
+
+val StatusOn = Color(0xFF4ADE80)
+val StatusWarn = Color(0xFFFBBF24)
+val StatusOff = Color(0xFFF87171)

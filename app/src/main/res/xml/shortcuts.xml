@@ -1,43 +1,55 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <shortcut
-        android:shortcutId="shortcut_screen_off"
+        android:enabled="true"
+        android:icon="@drawable/ic_remote"
+        android:shortcutId="shortcut_overlay"
+        android:shortcutLongLabel="@string/shortcut_overlay_long"
+        android:shortcutShortLabel="@string/shortcut_overlay_short">
+        <intent
+            android:action="com.modernlghub.remote.action.SHORTCUT"
+            android:targetClass="com.modernlghub.remote.system.ShortcutActionActivity"
+            android:targetPackage="com.modernlghub.remote">
+            <extra android:name="action" android:value="overlay" />
+        </intent>
+    </shortcut>
+    <shortcut
         android:enabled="true"
         android:icon="@drawable/ic_oled_off"
-        android:shortcutShortLabel="@string/shortcut_screen_off_short"
-        android:shortcutLongLabel="@string/shortcut_screen_off_long">
+        android:shortcutId="shortcut_screen_off"
+        android:shortcutLongLabel="@string/shortcut_screen_off_long"
+        android:shortcutShortLabel="@string/shortcut_screen_off_short">
         <intent
             android:action="com.modernlghub.remote.action.SHORTCUT"
-            android:targetPackage="com.modernlghub.remote"
-            android:targetClass="com.modernlghub.remote.system.ShortcutActionActivity">
-            <extra android:name="action" android:value="screen_toggle" />
+            android:targetClass="com.modernlghub.remote.system.ShortcutActionActivity"
+            android:targetPackage="com.modernlghub.remote">
+            <extra android:name="action" android:value="screen_off" />
         </intent>
-        <categories android:name="android.shortcut.conversation" />
     </shortcut>
-
     <shortcut
-        android:shortcutId="shortcut_pc"
         android:enabled="true"
         android:icon="@drawable/ic_pc"
-        android:shortcutShortLabel="@string/shortcut_pc_short"
-        android:shortcutLongLabel="@string/shortcut_pc_long">
+        android:shortcutId="shortcut_pc"
+        android:shortcutLongLabel="@string/shortcut_pc_long"
+        android:shortcutShortLabel="@string/shortcut_pc_short">
         <intent
             android:action="com.modernlghub.remote.action.SHORTCUT"
-            android:targetPackage="com.modernlghub.remote"
-            android:targetClass="com.modernlghub.remote.system.ShortcutActionActivity">
+            android:targetClass="com.modernlghub.remote.system.ShortcutActionActivity"
+            android:targetPackage="com.modernlghub.remote">
             <extra android:name="action" android:value="pc" />
         </intent>
     </shortcut>
-
     <shortcut
-        android:shortcutId="shortcut_overlay"
         android:enabled="true"
-        android:icon="@drawable/ic_remote"
-        android:shortcutShortLabel="@string/shortcut_overlay_short"
-        android:shortcutLongLabel="@string/shortcut_overlay_long">
+        android:icon="@drawable/ic_audio"
+        android:shortcutId="shortcut_audio"
+        android:shortcutLongLabel="@string/shortcut_audio_long"
+        android:shortcutShortLabel="@string/shortcut_audio_short">
         <intent
             android:action="com.modernlghub.remote.action.SHORTCUT"
-            android:targetPackage="com.modernlghub.remote"
-            android:targetClass="com.modernlghub.remote.system.QuickRemoteOverlayActivity" />
+            android:targetClass="com.modernlghub.remote.system.ShortcutActionActivity"
+            android:targetPackage="com.modernlghub.remote">
+            <extra android:name="action" android:value="audio_toggle" />
+        </intent>
     </shortcut>
 </shortcuts>

@@ -5,68 +5,74 @@ import android.content.SharedPreferences
 
 class TvPreferences(context: Context) {
     private val prefs: SharedPreferences =
-        context.getSharedPreferences("modern_lg_remote_prefs", Context.MODE_PRIVATE)
+        context.applicationContext.getSharedPreferences("modern_lg_remote_prefs", Context.MODE_PRIVATE)
 
+    /** Host or host:port of the hub. Kept under the old key so existing installs keep their IP. */
     var tvIp: String
-        get() = prefs.getString("tv_ip", "192.168.178.60") ?: "192.168.178.60"
+        get() = prefs.getString("tv_ip", DEFAULT_IP) ?: DEFAULT_IP
         set(value) = prefs.edit().putString("tv_ip", value.trim()).apply()
+
+    val baseUrl: String get() = HubApi.normalizeBaseUrl(tvIp)
+
+    /** Bare host, used for Wake-on-LAN unicast and the webOS pointer socket. */
+    val tvHost: String get() = baseUrl.substringAfter("://").substringBefore(":")
 
     var tvMac: String
         get() = prefs.getString("tv_mac", "") ?: ""
         set(value) = prefs.edit().putString("tv_mac", value.trim()).apply()
 
+    /** 0 = Wischen, 1 = Steuerkreuz, 2 = Mauszeiger. */
     var touchpadMode: Int
-        get() = prefs.getInt("touchpad_mode", 0) // 0: Gesture, 1: DPad, 2: Magic Cursor
+        get() = prefs.getInt("touchpad_mode", 0).coerceIn(0, 2)
         set(value) = prefs.edit().putInt("touchpad_mode", value).apply()
 
     var hapticFeedbackEnabled: Boolean
         get() = prefs.getBoolean("haptic_feedback", true)
         set(value) = prefs.edit().putBoolean("haptic_feedback", value).apply()
 
-    var liveNotificationEnabled: Boolean
-        get() = prefs.getBoolean("live_notification_enabled", true)
-        set(value) = prefs.edit().putBoolean("live_notification_enabled", value).apply()
+    var hardwareVolumeEnabled: Boolean
+        get() = prefs.getBoolean("hardware_volume", true)
+        set(value) = prefs.edit().putBoolean("hardware_volume", value).apply()
 
-    // 2x2 Widget Slot Configuration
+    /** Ongoing media notification + lock screen controls. Off by default: it is a foreground service. */
+    var liveNotificationEnabled: Boolean
+        get() = prefs.getBoolean("live_notification_v2", false)
+        set(value) = prefs.edit().putBoolean("live_notification_v2", value).apply()
+
+    /** webOS SSAP client key, so the TV only asks for pairing once (Mauszeiger). */
+    var ssapClientKey: String
+        get() = prefs.getString("ssap_client_key", "") ?: ""
+        set(value) = prefs.edit().putString("ssap_client_key", value).apply()
+
     var widgetSlot1: String
-        get() = prefs.getString("widget_slot_1", "power") ?: "power"
+        get() = prefs.getString("widget_slot_1", TvAction.POWER.key) ?: TvAction.POWER.key
         set(value) = prefs.edit().putString("widget_slot_1", value).apply()
 
     var widgetSlot2: String
-        get() = prefs.getString("widget_slot_2", "screen_off") ?: "screen_off"
+        get() = prefs.getString("widget_slot_2", TvAction.SCREEN.key) ?: TvAction.SCREEN.key
         set(value) = prefs.edit().putString("widget_slot_2", value).apply()
 
     var widgetSlot3: String
-        get() = prefs.getString("widget_slot_3", "pc") ?: "pc"
+        get() = prefs.getString("widget_slot_3", TvAction.PC.key) ?: TvAction.PC.key
         set(value) = prefs.edit().putString("widget_slot_3", value).apply()
 
     var widgetSlot4: String
-        get() = prefs.getString("widget_slot_4", "overlay") ?: "overlay"
+        get() = prefs.getString("widget_slot_4", TvAction.REMOTE.key) ?: TvAction.REMOTE.key
         set(value) = prefs.edit().putString("widget_slot_4", value).apply()
 
-    companion object {
-        const val ACTION_POWER = "power"
-        const val ACTION_SCREEN_OFF = "screen_off"
-        const val ACTION_PC = "pc"
-        const val ACTION_OVERLAY = "overlay"
-        const val ACTION_AUDIO = "audio_toggle"
-        const val ACTION_MUTE = "mute"
-        const val ACTION_HOME = "home"
-        const val ACTION_NETFLIX = "netflix"
-        const val ACTION_YOUTUBE = "youtube"
-        const val ACTION_SPOTIFY = "spotify"
+    fun widgetSlots(): List<TvAction> =
+        listOf(widgetSlot1, widgetSlot2, widgetSlot3, widgetSlot4).map { TvAction.fromKey(it) ?: TvAction.REMOTE }
 
-        val AVAILABLE_WIDGET_ACTIONS = listOf(
-            ACTION_POWER to "Power (Ein via WoL / Aus)",
-            ACTION_SCREEN_OFF to "OLED Display Aus / An",
-            ACTION_PC to "PC (HDMI 1)",
-            ACTION_OVERLAY to "Mini-Remote Overlay",
-            ACTION_AUDIO to "Audio (Denon Optisch ↔ TV)",
-            ACTION_MUTE to "Stummschalten (Mute)",
-            ACTION_HOME to "Home (Modern LG Hub)",
-            ACTION_NETFLIX to "Netflix",
-            ACTION_YOUTUBE to "YouTube",
-            ACTION_SPOTIFY to "Spotify"
-        )
+    fun setWidgetSlot(index: Int, action: TvAction) {
+        when (index) {
+            0 -> widgetSlot1 = action.key
+            1 -> widgetSlot2 = action.key
+            2 -> widgetSlot3 = action.key
+            else -> widgetSlot4 = action.key
+        }
+    }
+
+    companion object {
+        const val DEFAULT_IP = "192.168.178.60"
     }
 }

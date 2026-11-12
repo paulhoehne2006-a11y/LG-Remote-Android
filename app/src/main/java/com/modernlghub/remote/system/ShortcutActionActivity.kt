@@ -1,36 +1,34 @@
 package com.modernlghub.remote.system
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import com.modernlghub.remote.data.TvApiClient
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import com.modernlghub.remote.data.TvAction
+import com.modernlghub.remote.data.TvRepository
 import kotlinx.coroutines.launch
 
+/**
+ * Invisible trampoline for launcher shortcuts and Samsung Modes & Routines
+ * ("App-Aktion" → com.modernlghub.remote.action.SHORTCUT, extra `action`).
+ */
 class ShortcutActionActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        val action = intent.getStringExtra("action") ?: ""
-        val apiClient = TvApiClient(this)
-
-        if (action.isNotEmpty()) {
-            CoroutineScope(Dispatchers.IO + Job()).launch {
-                when (action) {
-                    "screen_toggle" -> apiClient.quickAction("screen_toggle")
-                    "pc" -> apiClient.quickAction("pc")
-                    "power_off" -> apiClient.quickAction("power_off")
-                    "power_on" -> apiClient.sendWakeOnLan()
-                    "mute" -> apiClient.quickAction("mute")
-                    "audio_toggle" -> apiClient.toggleAudioOutput()
-                    else -> apiClient.quickAction(action)
-                }
+        val action = TvAction.fromKey(intent.getStringExtra(EXTRA_ACTION))
+        when {
+            action == null -> Unit
+            action.opensUi -> startActivity(Intent(this, QuickRemoteOverlayActivity::class.java))
+            else -> {
+                // The repository scope outlives this activity; the request finishes in the background.
+                val repo = TvRepository.get(this)
+                repo.scope.launch { repo.perform(action) }
             }
         }
-
-        // Invisible headless activity completes immediately
         finish()
+    }
+
+    companion object {
+        const val EXTRA_ACTION = "action"
     }
 }

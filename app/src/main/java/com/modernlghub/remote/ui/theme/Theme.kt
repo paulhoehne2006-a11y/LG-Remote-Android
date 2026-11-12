@@ -1,47 +1,40 @@
 package com.modernlghub.remote.ui.theme
 
-import android.app.Activity
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalView
-import androidx.core.view.WindowCompat
+import androidx.compose.runtime.CompositionLocalProvider
 
-private val DarkColorScheme = darkColorScheme(
-    primary = TextWhite,
-    onPrimary = OledBlack,
-    secondary = DenonGreen,
-    background = OledBlack,
-    surface = SurfaceCard,
-    surfaceVariant = SurfaceCardVariant,
-    onBackground = TextWhite,
-    onSurface = TextWhite
+private val ObsidianScheme = darkColorScheme(
+    primary = Accent,
+    onPrimary = Obsidian,
+    primaryContainer = AccentDim,
+    onPrimaryContainer = Accent,
+    secondary = TextSecondary,
+    onSecondary = Obsidian,
+    background = Obsidian,
+    onBackground = TextPrimary,
+    surface = Obsidian,
+    onSurface = TextPrimary,
+    surfaceVariant = Surface2,
+    onSurfaceVariant = TextSecondary,
+    surfaceContainerLowest = Obsidian,
+    surfaceContainerLow = Surface1,
+    surfaceContainer = Surface1,
+    surfaceContainerHigh = Surface2,
+    surfaceContainerHighest = Surface3,
+    outline = Hairline,
+    outlineVariant = Hairline,
+    error = StatusOff,
+    inverseSurface = TextPrimary,
+    inverseOnSurface = Obsidian,
 )
 
 @Composable
-fun ModernLgTheme(
-    content: @Composable () -> Unit
-) {
-    val colorScheme = DarkColorScheme
-    val view = LocalView.current
-    if (!view.isInEditMode) {
-        SideEffect {
-            val window = (view.context as? Activity)?.window
-            if (window != null) {
-                window.statusBarColor = OledBlack.toArgb()
-                window.navigationBarColor = OledBlack.toArgb()
-                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
-                WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = false
-            }
-        }
+fun ModernLgTheme(content: @Composable () -> Unit) {
+    MaterialTheme(colorScheme = ObsidianScheme, typography = Typography) {
+        // Default text/icon colour everywhere, also outside Scaffold/Surface (overlay, sheets).
+        CompositionLocalProvider(LocalContentColor provides TextPrimary, content = content)
     }
-
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
 }

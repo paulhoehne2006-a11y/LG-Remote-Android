@@ -5,65 +5,64 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="9dp">
 
-    <!-- Header / Live Status Row -->
     <LinearLayout
         android:id="@+id/widget_header"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingBottom="8dp">
+        android:paddingStart="8dp"
+        android:paddingTop="4dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="6dp">
 
         <ImageView
             android:id="@+id/widget_status_dot"
             android:layout_width="8dp"
             android:layout_height="8dp"
-            android:layout_marginEnd="6dp"
-            android:src="@drawable/ic_audio" />
+            android:importantForAccessibility="no"
+            android:src="@drawable/widget_dot_off" />
 
         <TextView
             android:id="@+id/widget_title"
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text="LG OLED G4"
+            android:layout_marginStart="8dp"
+            android:text="@string/tile_label"
             android:textColor="@color/text_primary"
-            android:textSize="12sp"
+            android:textSize="13sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/widget_sub"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
             android:ellipsize="end"
+            android:gravity="end"
             android:maxLines="1"
-            android:text="Standby"
+            android:text="@string/widget_loading"
             android:textColor="@color/text_secondary"
-            android:textSize="11sp" />
+            android:textSize="12sp" />
     </LinearLayout>
 
-    <!-- 2x2 Grid of Actions -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
+        android:baselineAligned="false"
         android:orientation="horizontal">
 
-        <!-- Slot 1 (Default: Power) -->
         <LinearLayout
             android:id="@+id/btn_slot_1"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_marginEnd="4dp"
-            android:layout_marginBottom="4dp"
             android:layout_weight="1"
+            android:layout_margin="3dp"
             android:background="@drawable/widget_button_bg"
-            android:clickable="true"
-            android:focusable="true"
             android:gravity="center"
             android:orientation="vertical">
 
@@ -71,29 +70,28 @@
                 android:id="@+id/icon_slot_1"
                 android:layout_width="22dp"
                 android:layout_height="22dp"
-                android:src="@drawable/ic_power" />
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_remote"
+                android:tint="@color/text_primary" />
 
             <TextView
                 android:id="@+id/text_slot_1"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="Power"
-                android:textColor="@color/text_primary"
-                android:textSize="10sp" />
+                android:layout_marginTop="4dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
         </LinearLayout>
 
-        <!-- Slot 2 (Default: OLED Screen Off) -->
         <LinearLayout
             android:id="@+id/btn_slot_2"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_marginStart="4dp"
-            android:layout_marginBottom="4dp"
             android:layout_weight="1"
+            android:layout_margin="3dp"
             android:background="@drawable/widget_button_bg"
-            android:clickable="true"
-            android:focusable="true"
             android:gravity="center"
             android:orientation="vertical">
 
@@ -101,16 +99,19 @@
                 android:id="@+id/icon_slot_2"
                 android:layout_width="22dp"
                 android:layout_height="22dp"
-                android:src="@drawable/ic_oled_off" />
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_remote"
+                android:tint="@color/text_primary" />
 
             <TextView
                 android:id="@+id/text_slot_2"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="Display Aus"
-                android:textColor="@color/text_primary"
-                android:textSize="10sp" />
+                android:layout_marginTop="4dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
         </LinearLayout>
     </LinearLayout>
 
@@ -118,19 +119,16 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
+        android:baselineAligned="false"
         android:orientation="horizontal">
 
-        <!-- Slot 3 (Default: PC HDMI 1) -->
         <LinearLayout
             android:id="@+id/btn_slot_3"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_marginTop="4dp"
-            android:layout_marginEnd="4dp"
             android:layout_weight="1"
+            android:layout_margin="3dp"
             android:background="@drawable/widget_button_bg"
-            android:clickable="true"
-            android:focusable="true"
             android:gravity="center"
             android:orientation="vertical">
 
@@ -138,29 +136,28 @@
                 android:id="@+id/icon_slot_3"
                 android:layout_width="22dp"
                 android:layout_height="22dp"
-                android:src="@drawable/ic_pc" />
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_remote"
+                android:tint="@color/text_primary" />
 
             <TextView
                 android:id="@+id/text_slot_3"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="PC"
-                android:textColor="@color/text_primary"
-                android:textSize="10sp" />
+                android:layout_marginTop="4dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
         </LinearLayout>
 
-        <!-- Slot 4 (Default: Overlay Remote) -->
         <LinearLayout
             android:id="@+id/btn_slot_4"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_marginStart="4dp"
-            android:layout_marginTop="4dp"
             android:layout_weight="1"
+            android:layout_margin="3dp"
             android:background="@drawable/widget_button_bg"
-            android:clickable="true"
-            android:focusable="true"
             android:gravity="center"
             android:orientation="vertical">
 
@@ -168,16 +165,19 @@
                 android:id="@+id/icon_slot_4"
                 android:layout_width="22dp"
                 android:layout_height="22dp"
-                android:src="@drawable/ic_remote" />
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_remote"
+                android:tint="@color/text_primary" />
 
             <TextView
                 android:id="@+id/text_slot_4"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="Remote"
-                android:textColor="@color/text_primary"
-                android:textSize="10sp" />
+                android:layout_marginTop="4dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>

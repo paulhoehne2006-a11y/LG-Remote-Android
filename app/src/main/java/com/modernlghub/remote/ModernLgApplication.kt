@@ -3,11 +3,10 @@ package com.modernlghub.remote
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.content.Context
-import android.content.Intent
-import android.os.Build
-import com.modernlghub.remote.data.TvPreferences
-import com.modernlghub.remote.system.TvPresenceService
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
+import com.modernlghub.remote.data.TvRepository
 
 class ModernLgApplication : Application() {
 
@@ -15,36 +14,28 @@ class ModernLgApplication : Application() {
         super.onCreate()
         createNotificationChannels()
 
-        val prefs = TvPreferences(this)
-        if (prefs.liveNotificationEnabled) {
-            try {
-                val intent = Intent(this, TvPresenceService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(intent)
-                } else {
-                    startService(intent)
-                }
-            } catch (e: Exception) {
-                // Background start restrictions may apply until activity is opened
-            }
-        }
+        // Poll the TV only while any of our UI (app or mini remote) is in the foreground.
+        val repo = TvRepository.get(this)
+        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) = repo.acquirePolling(POLL_CLIENT_UI)
+            override fun onStop(owner: LifecycleOwner) = repo.releasePolling(POLL_CLIENT_UI)
+        })
     }
 
     private fun createNotificationChannels() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = getString(R.string.notification_channel_name)
-            val desc = getString(R.string.notification_channel_desc)
-            val importance = NotificationManager.IMPORTANCE_LOW
-            val channel = NotificationChannel(CHANNEL_ID_PRESENCE, name, importance).apply {
-                description = desc
-                setShowBadge(false)
-            }
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.createNotificationChannel(channel)
+        val channel = NotificationChannel(
+            CHANNEL_ID_PRESENCE,
+            getString(R.string.notification_channel_name),
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply {
+            description = getString(R.string.notification_channel_desc)
+            setShowBadge(false)
         }
+        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
     companion object {
         const val CHANNEL_ID_PRESENCE = "channel_tv_presence"
+        private const val POLL_CLIENT_UI = "ui"
     }
 }
