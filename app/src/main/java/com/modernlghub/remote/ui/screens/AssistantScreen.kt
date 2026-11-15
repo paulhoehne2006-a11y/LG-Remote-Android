@@ -22,13 +22,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Key
@@ -58,6 +59,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.modernlghub.remote.data.AssistantReply
+import com.modernlghub.remote.data.AssistantTurn
 import com.modernlghub.remote.ui.components.RoundButton
 import com.modernlghub.remote.ui.components.card
 import com.modernlghub.remote.ui.components.pressable
@@ -73,7 +75,14 @@ import com.modernlghub.remote.ui.theme.TextSecondary
 import com.modernlghub.remote.ui.theme.TextTertiary
 import kotlinx.coroutines.launch
 
-data class ChatMessage(val fromUser: Boolean, val text: String, val actions: List<String> = emptyList(), val isError: Boolean = false)
+data class ChatMessage(
+    val fromUser: Boolean,
+    val text: String,
+    val actions: List<String> = emptyList(),
+    val isError: Boolean = false,
+    /** Follow-up questions proposed by Gemini for this answer. */
+    val suggestions: List<String> = emptyList(),
+)
 
 private val SUGGESTIONS = listOf(
     "Mach den Bildschirm aus, Musik soll weiterlaufen",
@@ -88,8 +97,9 @@ fun AssistantScreen(
     messages: SnapshotStateList<ChatMessage>,
     hasKey: Boolean,
     online: Boolean,
-    ask: suspend (String) -> AssistantReply,
-    saveKey: suspend (String) -> Boolean,
+    ask: suspend (prompt: String, history: List<AssistantTurn>) -> AssistantReply,
+    /** Returns null on success, otherwise an error message. */
+    saveKey: suspend (String) -> String?,
     modifier: Modifier = Modifier,
 ) {
     val haptics = rememberHaptics()
@@ -102,12 +112,14 @@ fun AssistantScreen(
         val p = prompt.trim()
         if (p.isEmpty() || thinking) return
         haptics.click()
+        // Earlier turns give Gemini context for follow-ups ("und jetzt etwas leiser").
+        val history = messages.filterNot { it.isError }.map { AssistantTurn(it.fromUser, it.text) }
         messages += ChatMessage(true, p)
         input = ""
         thinking = true
         scope.launch {
-            val reply = ask(p)
-            messages += ChatMessage(false, reply.text, reply.actions, reply.isError)
+            val reply = ask(p, history)
+            messages += ChatMessage(false, reply.text, reply.actions, reply.isError, reply.suggestions)
             thinking = false
         }
     }
@@ -123,9 +135,17 @@ fun AssistantScreen(
     }
 
     Column(modifier.fillMaxSize().imePadding()) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(top = 8.dp)) {
-            Text("Assistent", style = MaterialTheme.typography.headlineSmall, color = TextPrimary)
-            Text("Gemini steuert TV, Audio und Licht", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+        Row(Modifier.padding(horizontal = 20.dp).padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Assistent", style = MaterialTheme.typography.headlineSmall, color = TextPrimary)
+                Text("Gemini steuert TV, Audio und Licht", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            }
+            if (messages.isNotEmpty() && !thinking) {
+                RoundButton(
+                    Icons.AutoMirrored.Rounded.Chat, "Neues Gespräch",
+                    size = 44.dp, iconSize = 20.dp, container = Surface1, tint = TextSecondary,
+                ) { messages.clear() }
+            }
         }
         if (thinking) {
             LinearProgressIndicator(color = Accent, trackColor = Color.Transparent, modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(2.dp))
@@ -145,17 +165,7 @@ fun AssistantScreen(
                     Text("Was soll passieren?", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(16.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SUGGESTIONS.forEach { s ->
-                            Text(
-                                s,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextPrimary,
-                                modifier = Modifier
-                                    .card(RoundedCornerShape(18.dp))
-                                    .pressable { send(s) }
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                            )
-                        }
+                        SUGGESTIONS.forEach { s -> SuggestionChip(s) { send(s) } }
                     }
                 }
                 else -> LazyColumn(
@@ -164,7 +174,16 @@ fun AssistantScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    items(messages) { Bubble(it) }
+                    itemsIndexed(messages) { index, msg ->
+                        Bubble(msg)
+                        // Follow-up chips only under the latest answer.
+                        if (index == messages.lastIndex && !msg.fromUser && msg.suggestions.isNotEmpty() && !thinking) {
+                            Spacer(Modifier.height(10.dp))
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                msg.suggestions.forEach { s -> SuggestionChip(s) { send(s) } }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -207,6 +226,19 @@ fun AssistantScreen(
 }
 
 @Composable
+private fun SuggestionChip(text: String, onClick: () -> Unit) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = TextPrimary,
+        modifier = Modifier
+            .card(RoundedCornerShape(18.dp))
+            .pressable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    )
+}
+
+@Composable
 private fun Bubble(msg: ChatMessage) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (msg.fromUser) Arrangement.End else Arrangement.Start) {
         Column(
@@ -244,7 +276,7 @@ private fun Bubble(msg: ChatMessage) {
 }
 
 @Composable
-private fun KeyCard(saveKey: suspend (String) -> Boolean) {
+private fun KeyCard(saveKey: suspend (String) -> String?) {
     val scope = rememberCoroutineScope()
     var key by remember { mutableStateOf("") }
     var result by remember { mutableStateOf<String?>(null) }
@@ -266,7 +298,7 @@ private fun KeyCard(saveKey: suspend (String) -> Boolean) {
         )
         Spacer(Modifier.height(12.dp))
         Button(
-            onClick = { scope.launch { result = if (saveKey(key)) "Gespeichert" else "Hub nicht erreichbar" } },
+            onClick = { scope.launch { result = saveKey(key) ?: "Gespeichert" } },
             enabled = key.length > 10,
             colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black),
         ) { Text("Auf dem Hub speichern") }

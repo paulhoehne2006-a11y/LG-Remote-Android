@@ -19,6 +19,7 @@ import android.os.IBinder
 import androidx.core.content.ContextCompat
 import com.modernlghub.remote.ModernLgApplication
 import com.modernlghub.remote.R
+import com.modernlghub.remote.data.Connection
 import com.modernlghub.remote.data.TvAction
 import com.modernlghub.remote.data.TvRepository
 import com.modernlghub.remote.data.TvState
@@ -165,6 +166,7 @@ class TvPresenceService : Service() {
     }
 
     private fun statusText(state: TvState): String = when {
+        state.connection == Connection.UNAUTHORIZED -> "Hub verlangt einen Token"
         !state.isOnline -> if (onWifi) "Aus" else "Nicht im Heim-WLAN"
         state.status.isStandby -> "Standby"
         state.status.screenOff -> "Bild aus · ${state.status.audio.outputLabel}"

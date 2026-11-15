@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
+import com.modernlghub.remote.data.Connection
 import com.modernlghub.remote.data.TvRepository
 import com.modernlghub.remote.data.TvState
 import kotlinx.coroutines.CoroutineScope
@@ -40,6 +41,7 @@ class TvQuickTileService : TileService() {
         tile.state = if (state.isOn) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
         tile.label = "LG OLED"
         tile.subtitle = when {
+            state.connection == Connection.UNAUTHORIZED -> "Token fehlt"
             !state.isOnline -> "Aus"
             state.status.screenOff -> "Bild aus"
             else -> state.appTitle().ifBlank { "An" }

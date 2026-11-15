@@ -9,6 +9,7 @@ mit dem Hub auf dem Fernseher (`http://<tv-ip>:8080`), ohne Cloud und ohne Pairi
   <img src="docs/screenshots/remote_pc_dpad.png" width="200" alt="Steuerkreuz am PC-Eingang" />
   <img src="docs/screenshots/apps.png" width="200" alt="Apps" />
   <img src="docs/screenshots/smarthome.png" width="200" alt="Zuhause" />
+  <img src="docs/screenshots/smarthome_light.png" width="200" alt="Helligkeit und Farbe" />
 </p>
 
 ## Funktionen
@@ -25,7 +26,7 @@ mit dem Hub auf dem Fernseher (`http://<tv-ip>:8080`), ohne Cloud und ohne Pairi
 
 **Weitere Bereiche**
 - **Apps** – alle Apps und HDMI-Eingänge mit echten Icons vom Fernseher
-- **Zuhause** – SmartThings-Lichter und -Steckdosen über den Hub
+- **Zuhause** – WiZ-Lampen und Tapo-Steckdosen, lokal über den Hub, nach Räumen sortiert; Lampen mit Helligkeit, Farbe und Weißton (lange drücken oder Regler-Symbol)
 - **Assistent** – Gemini-Befehle per Text oder Sprache („Bild aus, Musik soll weiterlaufen“)
 
 **System-Integration (One UI)**

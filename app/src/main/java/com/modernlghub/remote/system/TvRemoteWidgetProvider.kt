@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.widget.RemoteViews
 import com.modernlghub.remote.R
+import com.modernlghub.remote.data.Connection
 import com.modernlghub.remote.data.TvAction
 import com.modernlghub.remote.data.TvRepository
 import com.modernlghub.remote.data.TvState
@@ -90,6 +91,7 @@ class TvRemoteWidgetProvider : AppWidgetProvider() {
             views.setTextViewText(
                 R.id.widget_sub,
                 when {
+                    state.connection == Connection.UNAUTHORIZED -> "Token fehlt"
                     !state.isOnline -> "Aus"
                     state.status.isStandby -> "Standby"
                     state.status.screenOff -> "Bild aus"

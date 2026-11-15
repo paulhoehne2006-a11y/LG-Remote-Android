@@ -157,13 +157,18 @@ private fun MainContent(repo: TvRepository) {
             when (screen) {
                 -1 -> SettingsScreen(repo, state, onBack = { showSettings = false }, modifier = content)
                 1 -> AppsScreen(state, repo.api::iconUrl, onLaunch = { repo.launch(it); tab = 0 }, modifier = content)
-                2 -> SmartHomeScreen(load = repo::smartDevices, toggle = repo::toggleDevice, modifier = content)
+                2 -> SmartHomeScreen(
+                    load = repo::smartDevices,
+                    toggle = repo::toggleDevice,
+                    setLight = { id, c -> repo.setDevice(id, c.on, c.brightness, c.color, c.kelvin) },
+                    modifier = content,
+                )
                 3 -> AssistantScreen(
                     messages = chat,
                     hasKey = state.status.hasGeminiKey,
                     online = state.isOnline,
                     ask = repo::ask,
-                    saveKey = { key -> repo.saveGeminiKey(key).also { if (it) repo.refresh() } },
+                    saveKey = { key -> repo.saveGeminiKey(key).also { if (it == null) repo.refresh() } },
                     modifier = content,
                 )
                 else -> RemoteScreen(

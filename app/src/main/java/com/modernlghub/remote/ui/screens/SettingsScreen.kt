@@ -53,9 +53,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.modernlghub.remote.BuildConfig
+import com.modernlghub.remote.data.Connection
 import com.modernlghub.remote.data.TvAction
 import com.modernlghub.remote.data.TvRepository
 import com.modernlghub.remote.data.TvState
@@ -69,6 +72,7 @@ import com.modernlghub.remote.ui.theme.Accent
 import com.modernlghub.remote.ui.theme.Hairline
 import com.modernlghub.remote.ui.theme.StatusOff
 import com.modernlghub.remote.ui.theme.StatusOn
+import com.modernlghub.remote.ui.theme.StatusWarn
 import com.modernlghub.remote.ui.theme.Surface1
 import com.modernlghub.remote.ui.theme.Surface2
 import com.modernlghub.remote.ui.theme.TextPrimary
@@ -84,6 +88,7 @@ fun SettingsScreen(repo: TvRepository, state: TvState, onBack: () -> Unit, modif
 
     var address by remember { mutableStateOf(prefs.tvIp) }
     var mac by remember { mutableStateOf(prefs.tvMac) }
+    var token by remember { mutableStateOf(prefs.hubToken) }
     var info by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
     var searching by remember { mutableStateOf(false) }
     var haptics by remember { mutableStateOf(prefs.hapticFeedbackEnabled) }
@@ -91,10 +96,18 @@ fun SettingsScreen(repo: TvRepository, state: TvState, onBack: () -> Unit, modif
     var live by remember { mutableStateOf(prefs.liveNotificationEnabled) }
     var slots by remember { mutableStateOf(prefs.widgetSlots()) }
 
-    fun applyAddress(value: String) {
-        if (value.isBlank() || value == prefs.tvIp) return
-        prefs.tvIp = value
-        repo.resetConnection()
+    /** Saves address and token; reconnects only if something actually changed. */
+    fun applyConnection(newAddress: String, newToken: String) {
+        var changed = false
+        if (newAddress.isNotBlank() && newAddress != prefs.tvIp) {
+            prefs.tvIp = newAddress
+            changed = true
+        }
+        if (newToken.trim() != prefs.hubToken) {
+            prefs.hubToken = newToken
+            changed = true
+        }
+        if (changed) repo.resetConnection()
     }
 
     fun setLive(enabled: Boolean) {
@@ -125,20 +138,28 @@ fun SettingsScreen(repo: TvRepository, state: TvState, onBack: () -> Unit, modif
         SectionLabel("Fernseher")
         Group {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(8.dp).clip(RoundedCornerShape(4.dp)).background(if (state.isOnline) StatusOn else StatusOff))
+                val (dot, label) = when (state.connection) {
+                    Connection.ONLINE -> StatusOn to "Verbunden mit ${prefs.baseUrl.removePrefix("http://")}"
+                    Connection.UNAUTHORIZED -> StatusWarn to "Hub erreichbar, Token fehlt oder ist falsch"
+                    Connection.CONNECTING -> TextTertiary to "Verbinde …"
+                    Connection.OFFLINE -> StatusOff to "Nicht verbunden"
+                }
+                Box(Modifier.size(8.dp).clip(RoundedCornerShape(4.dp)).background(dot))
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    if (state.isOnline) "Verbunden mit ${prefs.baseUrl.removePrefix("http://")}" else "Nicht verbunden",
+                    label,
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary,
                 )
             }
             Spacer(Modifier.height(16.dp))
             Field("Hub-Adresse (IP oder IP:Port)", address, KeyboardType.Uri) { address = it }
+            Spacer(Modifier.height(10.dp))
+            Field("Token (nur falls GEMINI_TOKEN gesetzt)", token, KeyboardType.Password, secret = true) { token = it }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
-                    onClick = { applyAddress(address); info = null },
+                    onClick = { applyConnection(address, token); info = null },
                     colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black),
                 ) { Text("Übernehmen") }
                 OutlinedButton(
@@ -150,7 +171,7 @@ fun SettingsScreen(repo: TvRepository, state: TvState, onBack: () -> Unit, modif
                             searching = false
                             if (found != null) {
                                 address = found
-                                applyAddress(found)
+                                applyConnection(found, token)
                                 info = true to "Hub gefunden: $found"
                             } else {
                                 info = false to "Kein Hub im WLAN gefunden. Läuft der Fernseher?"
@@ -261,12 +282,13 @@ private fun Divider() {
 }
 
 @Composable
-private fun Field(label: String, value: String, type: KeyboardType, onChange: (String) -> Unit) {
+private fun Field(label: String, value: String, type: KeyboardType, secret: Boolean = false, onChange: (String) -> Unit) {
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
         label = { Text(label) },
         singleLine = true,
+        visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions = KeyboardOptions(keyboardType = type, imeAction = ImeAction.Done),
         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Accent, unfocusedBorderColor = Hairline, focusedLabelColor = Accent),
         modifier = Modifier.fillMaxWidth(),

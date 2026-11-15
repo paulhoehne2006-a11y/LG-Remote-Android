@@ -1,0 +1,62 @@
+[
+ {
+  "id": "0a0000000001",
+  "name": "Fernseher Bar",
+  "room": "Wohnzimmer",
+  "raw_name": "Wohnzimmer Fernseher Bar",
+  "type": "light",
+  "state": "on",
+  "brightness": 55,
+  "color": "#ff2800",
+  "kelvin": null,
+  "capabilities": [
+   "brightness",
+   "color",
+   "white"
+  ],
+  "online": true
+ },
+ {
+  "id": "0a0000000002",
+  "name": "Licht",
+  "room": "Wohnzimmer",
+  "raw_name": "Wohnzimmer Licht",
+  "type": "light",
+  "state": "on",
+  "brightness": 80,
+  "color": "#ffa657",
+  "kelvin": 2700,
+  "capabilities": [
+   "brightness",
+   "white"
+  ],
+  "online": true
+ },
+ {
+  "id": "0a0000000007",
+  "name": "Bett",
+  "room": "Schlafzimmer",
+  "raw_name": "Schlafzimmer Bett",
+  "type": "plug",
+  "state": "on",
+  "brightness": null,
+  "color": null,
+  "kelvin": null,
+  "capabilities": [],
+  "online": true
+ },
+ {
+  "id": "0a0000000008",
+  "name": "Licht",
+  "room": "Büro",
+  "raw_name": "Büro Licht",
+  "type": "plug",
+  "state": "off",
+  "brightness": null,
+  "color": null,
+  "kelvin": null,
+  "capabilities": [],
+  "online": false,
+  "error": "no answer from 192.168.1.50"
+ }
+]

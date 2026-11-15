@@ -76,7 +76,7 @@ data class TvState(
 class TvRepository private constructor(private val appContext: Context) {
 
     val prefs = TvPreferences(appContext)
-    val api = HubApi { prefs.baseUrl }
+    val api = HubApi(baseUrl = { prefs.baseUrl }, token = { prefs.hubToken })
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val _state = MutableStateFlow(TvState())
@@ -95,8 +95,7 @@ class TvRepository private constructor(private val appContext: Context) {
     init {
         scope.launch {
             for (key in keyQueue) {
-                val ok = api.post("/api/remote/key", JSONObject().put("key", key).put("fast", true), HubApi.TIMEOUT_KEY)
-                if (ok == null) onCommandFailed()
+                command("/api/remote/key", JSONObject().put("key", key).put("fast", true), HubApi.TIMEOUT_KEY)
             }
         }
     }
@@ -126,14 +125,20 @@ class TvRepository private constructor(private val appContext: Context) {
         }
     }
 
-    /** Fetch status (and the app list if stale). Returns true if the hub answered. */
+    /** Fetch status (and the app list if stale). Returns true if the hub answered with a status. */
     suspend fun refresh(): Boolean {
-        val body = api.get("/api/status", HubApi.TIMEOUT_STATUS)
-        val status = body?.let { runCatching { TvStatus.parse(it) }.getOrNull() }
+        val result = api.get("/api/status", HubApi.TIMEOUT_STATUS)
+        if (result is HubResult.Rejected && result.code == 401) {
+            // Hub is there but wants (another) X-Hub-Token: no point in counting this as "off".
+            failedPolls = 0
+            _state.update { it.copy(connection = Connection.UNAUTHORIZED, waking = false) }
+            return false
+        }
+        val status = (result as? HubResult.Ok)?.let { runCatching { TvStatus.parse(it.body) }.getOrNull() }
         if (status == null) {
             failedPolls++
             // One dropped poll on Wi-Fi is normal; only flip to offline after two.
-            if (failedPolls >= 2 || _state.value.connection == Connection.CONNECTING) {
+            if (failedPolls >= 2 || _state.value.connection != Connection.ONLINE) {
                 _state.update { it.copy(connection = Connection.OFFLINE) }
             }
             return false
@@ -146,7 +151,7 @@ class TvRepository private constructor(private val appContext: Context) {
     }
 
     suspend fun loadApps() {
-        val body = api.get("/api/apps") ?: return
+        val body = (api.get("/api/apps") as? HubResult.Ok)?.body ?: return
         val apps = runCatching { LauncherApp.parseList(body) }.getOrNull() ?: return
         if (apps.isNotEmpty()) {
             lastAppsLoad = System.currentTimeMillis()
@@ -154,7 +159,7 @@ class TvRepository private constructor(private val appContext: Context) {
         }
     }
 
-    /** Call after the hub address changed. */
+    /** Call after the hub address or token changed. */
     fun resetConnection() {
         failedPolls = 0
         lastAppsLoad = 0
@@ -171,15 +176,38 @@ class TvRepository private constructor(private val appContext: Context) {
 
     private var lastFailureMessage = 0L
 
-    private suspend fun onCommandFailed() {
-        if (!_state.value.isOnline) return
-        failedPolls++
+    /** At most one snackbar every few seconds, so a burst of failing keys doesn't spam. */
+    private suspend fun notify(message: String) {
         val now = System.currentTimeMillis()
-        if (now - lastFailureMessage > 5000) {
+        if (now - lastFailureMessage > 4000) {
             lastFailureMessage = now
-            _messages.emit("Hub antwortet nicht")
+            _messages.emit(message)
         }
-        refreshSoon(0)
+    }
+
+    /**
+     * POST a command and report problems. Distinguishes "hub not reachable" from
+     * "hub answered with an error" (e.g. 502 when the TV refused a quick action).
+     */
+    private suspend fun command(path: String, body: JSONObject = JSONObject(), timeoutMs: Long = HubApi.TIMEOUT_DEFAULT): HubResult {
+        val result = api.post(path, body, timeoutMs)
+        when (result) {
+            is HubResult.Ok -> Unit
+            is HubResult.Unreachable -> if (_state.value.isOnline) {
+                failedPolls++
+                notify("Hub antwortet nicht")
+                refreshSoon(0)
+            }
+            is HubResult.Rejected -> when (result.code) {
+                401 -> {
+                    _state.update { it.copy(connection = Connection.UNAUTHORIZED) }
+                    notify("Hub verlangt einen gültigen Token (Einstellungen)")
+                }
+                502 -> notify("Der Fernseher hat den Befehl nicht ausgeführt")
+                else -> notify("Hub: ${result.message}")
+            }
+        }
+        return result
     }
 
     // ---------------------------------------------------------------- remote keys
@@ -212,8 +240,9 @@ class TvRepository private constructor(private val appContext: Context) {
 
     private fun quick(action: String, refresh: Boolean = true) {
         scope.launch {
-            val res = api.post("/api/quick", JSONObject().put("action", action))
-            if (res == null) onCommandFailed() else if (refresh) refreshSoon()
+            val res = command("/api/quick", JSONObject().put("action", action))
+            // On a refusal, fetch the real state at once so optimistic changes are rolled back.
+            if (!res.isOk) refreshSoon(0) else if (refresh) refreshSoon()
         }
     }
 
@@ -229,18 +258,18 @@ class TvRepository private constructor(private val appContext: Context) {
     fun launch(appId: String) {
         _state.update { it.copy(status = it.status.copy(currentAppId = appId, screenOff = false)) }
         scope.launch {
-            val res = api.post("/api/launch", JSONObject().put("id", appId))
-            if (res == null) onCommandFailed() else refreshSoon(1200)
+            command("/api/launch", JSONObject().put("id", appId))
+            refreshSoon(1200)
         }
     }
 
     fun setPictureMode(mode: PictureMode) {
         scope.launch {
-            val res = api.post("/api/picture/mode", JSONObject().put("mode", mode.key))
-            when {
-                res == null -> onCommandFailed()
-                res.optBoolean("success", true) -> _messages.emit("Bildmodus: ${mode.label}")
-                else -> _messages.emit("Bildmodus wurde vom TV abgelehnt")
+            val res = command("/api/picture/mode", JSONObject().put("mode", mode.key))
+            if (res is HubResult.Ok) {
+                _messages.emit(
+                    if (res.json().optBoolean("success", true)) "Bildmodus: ${mode.label}" else "Bildmodus wurde vom TV abgelehnt"
+                )
             }
         }
     }
@@ -248,8 +277,8 @@ class TvRepository private constructor(private val appContext: Context) {
     fun setSoundOutput(output: SoundOutput) {
         _state.update { it.copy(status = it.status.copy(audio = it.status.audio.copy(soundOutput = output.key))) }
         scope.launch {
-            val res = api.post("/api/audio/output", JSONObject().put("output", output.key))
-            if (res == null) onCommandFailed() else refreshSoon()
+            command("/api/audio/output", JSONObject().put("output", output.key))
+            refreshSoon()
         }
     }
 
@@ -277,7 +306,7 @@ class TvRepository private constructor(private val appContext: Context) {
                 _messages.emit("Keine MAC-Adresse bekannt – bitte in den Einstellungen eintragen")
                 return@launch
             }
-            // TV may already run the hub in active standby: also turn the panel on.
+            // TV may already run the hub in active standby: also turn the panel on (silently).
             api.post("/api/quick", JSONObject().put("action", "screen_on"), HubApi.TIMEOUT_KEY)
             // Poll faster for ~25 s so the UI flips to "on" as soon as the hub is up.
             repeat(12) {
@@ -291,38 +320,107 @@ class TvRepository private constructor(private val appContext: Context) {
     // ---------------------------------------------------------------- text input
 
     fun sendText(text: String) {
-        scope.launch { api.post("/api/remote/text", JSONObject().put("text", text).put("replace", true)) }
+        scope.launch { command("/api/remote/text", JSONObject().put("text", text).put("replace", true)) }
     }
 
     fun sendEnter() {
-        scope.launch { api.post("/api/remote/enter") }
+        scope.launch { command("/api/remote/enter") }
     }
 
     // ---------------------------------------------------------------- smart home & assistant
 
+    /** Lamps and plugs from the hub's local smart-home control; null if the hub can't be read. */
     suspend fun smartDevices(): List<SmartDevice>? {
-        val body = api.get("/api/smartthings/devices", HubApi.TIMEOUT_SMARTTHINGS) ?: return null
+        var res = api.get("/api/smarthome/devices", HubApi.TIMEOUT_SMARTTHINGS)
+        // Hubs before the local smart-home control only know the old SmartThings path.
+        if (res is HubResult.Rejected && res.code == 404) res = api.get("/api/smartthings/devices", HubApi.TIMEOUT_SMARTTHINGS)
+        val body = (res as? HubResult.Ok)?.body ?: return null
         return runCatching { SmartDevice.parseList(body) }.getOrNull()
     }
 
-    /** Toggle a SmartThings switch; returns the new on-state, or null on failure. */
+    /** Toggle a lamp or plug; returns the new on-state, or null on failure. */
     suspend fun toggleDevice(id: String): Boolean? {
-        val res = api.post("/api/smartthings/toggle", JSONObject().put("deviceId", id), HubApi.TIMEOUT_SMARTTHINGS)
-            ?: return null
-        val state = res.optString("new_state", res.optString("state", ""))
+        val body = JSONObject().put("deviceId", id)
+        var res = api.post("/api/smarthome/toggle", body, HubApi.TIMEOUT_SMARTTHINGS)
+        if (res is HubResult.Rejected && res.code == 404) res = api.post("/api/smartthings/toggle", body, HubApi.TIMEOUT_SMARTTHINGS)
+        val json = smartHomeResult(res) ?: return null
+        val state = json.optString("new_state", json.optString("state", ""))
         return if (state.isBlank()) null else state == "on"
     }
 
-    suspend fun ask(prompt: String): AssistantReply {
-        val body = api.postRaw("/api/command", JSONObject().put("prompt", prompt), HubApi.TIMEOUT_ASSISTANT)
-            ?: return AssistantReply("Der Hub hat nicht geantwortet.", isError = true)
-        refreshSoon(500)
-        return runCatching { AssistantReply.parse(body) }
-            .getOrElse { AssistantReply("Antwort konnte nicht gelesen werden.", isError = true) }
+    /**
+     * Switch a lamp and optionally set its brightness (10..100), an RGB colour (`#rrggbb`)
+     * or a white tone in kelvin. Returns true when the hub confirmed it.
+     */
+    suspend fun setDevice(
+        id: String,
+        on: Boolean,
+        brightness: Int? = null,
+        color: String? = null,
+        kelvin: Int? = null,
+    ): Boolean {
+        val body = JSONObject().put("deviceId", id).put("state", if (on) "on" else "off")
+        brightness?.let { body.put("brightness", it.coerceIn(10, 100)) }
+        color?.let { body.put("color", it) }
+        kelvin?.let { body.put("kelvin", it.coerceIn(SmartDevice.KELVIN_MIN, SmartDevice.KELVIN_MAX)) }
+        val res = api.post("/api/smarthome/set", body, HubApi.TIMEOUT_SMARTTHINGS)
+        if (res is HubResult.Rejected && res.code == 404) {
+            notify("Hub zu alt für Helligkeit/Farbe – bitte Hub aktualisieren")
+            return false
+        }
+        return smartHomeResult(res) != null
     }
 
-    suspend fun saveGeminiKey(key: String): Boolean =
-        api.post("/api/key", JSONObject().put("api_key", key.trim())) != null
+    /** The hub's JSON answer, or null (with a message) when it failed. */
+    private suspend fun smartHomeResult(res: HubResult): JSONObject? {
+        if (res !is HubResult.Ok) {
+            notify(
+                when {
+                    res is HubResult.Rejected && res.code == 401 -> "Hub verlangt einen gültigen Token (Einstellungen)"
+                    res is HubResult.Rejected -> "Zuhause: ${res.message}"
+                    else -> "Hub antwortet nicht"
+                }
+            )
+            return null
+        }
+        val json = runCatching { res.json() }.getOrNull()
+        if (json == null) {
+            notify("Zuhause: unerwartete Antwort")
+            return null
+        }
+        if (json.optString("status") == "error") {
+            notify("Zuhause: ${json.optString("error", "Fehler")}")
+            return null
+        }
+        return json
+    }
+
+    /**
+     * Ask Gemini via the hub. [history] are earlier turns of this conversation, so the hub can
+     * answer follow-up questions ("und jetzt leiser").
+     */
+    suspend fun ask(prompt: String, history: List<AssistantTurn> = emptyList()): AssistantReply {
+        val body = JSONObject()
+            .put("prompt", prompt)
+            .put("history", AssistantTurn.toJson(history.takeLast(MAX_HISTORY_TURNS)))
+        val reply = when (val res = api.post("/api/command", body, HubApi.TIMEOUT_ASSISTANT)) {
+            is HubResult.Ok -> runCatching { AssistantReply.parse(res.body) }
+                .getOrElse { AssistantReply("Antwort konnte nicht gelesen werden.", isError = true) }
+            is HubResult.Rejected -> AssistantReply(res.message, isError = true)
+            HubResult.Unreachable -> AssistantReply("Der Hub hat nicht geantwortet.", isError = true)
+        }
+        if (reply.needsKey) _state.update { it.copy(status = it.status.copy(hasGeminiKey = false)) }
+        refreshSoon(500)
+        return reply
+    }
+
+    /** Returns null on success, otherwise a message for the user. */
+    suspend fun saveGeminiKey(key: String): String? =
+        when (val res = api.post("/api/key", JSONObject().put("api_key", key.trim()))) {
+            is HubResult.Ok -> if (res.json().optBoolean("success", true)) null else "Schlüssel wurde nicht gespeichert"
+            is HubResult.Rejected -> res.message
+            HubResult.Unreachable -> "Hub nicht erreichbar"
+        }
 
     // ---------------------------------------------------------------- Wake-on-LAN & discovery
 
@@ -356,8 +454,7 @@ class TvRepository private constructor(private val appContext: Context) {
         val results = ordered.map { host ->
             async {
                 gate.withPermit {
-                    val body = api.get("/api", 900, base = "http://$host:${HubApi.DEFAULT_PORT}")
-                    host.takeIf { body != null && body.contains("LG Hub", ignoreCase = true) }
+                    host.takeIf { isHubAnswer(api.get("/api", 900, base = "http://$host:${HubApi.DEFAULT_PORT}")) }
                 }
             }
         }.awaitAll()
@@ -369,11 +466,11 @@ class TvRepository private constructor(private val appContext: Context) {
     /**
      * Execute a widget / shortcut / routine / notification action and *wait* for the hub,
      * so callers like a BroadcastReceiver (goAsync) or a finishing Activity don't lose it.
-     * Returns false if the hub could not be reached. UI actions ([TvAction.opensUi]) are no-ops.
+     * Returns false if the hub could not be reached or refused. UI actions ([TvAction.opensUi]) are no-ops.
      */
     suspend fun perform(action: TvAction): Boolean {
-        suspend fun quickNow(name: String) = api.post("/api/quick", JSONObject().put("action", name)) != null
-        suspend fun launchNow(id: String) = api.post("/api/launch", JSONObject().put("id", id)) != null
+        suspend fun quickNow(name: String) = api.post("/api/quick", JSONObject().put("action", name)).isOk
+        suspend fun launchNow(id: String) = api.post("/api/launch", JSONObject().put("id", id)).isOk
 
         val ok = when (action) {
             TvAction.POWER -> {
@@ -388,22 +485,30 @@ class TvRepository private constructor(private val appContext: Context) {
             }
             TvAction.SCREEN -> quickNow("screen_toggle")
             TvAction.PC -> launchNow("com.webos.app.hdmi1")
-            TvAction.AUDIO -> api.post("/api/audio/toggle") != null
+            TvAction.AUDIO -> api.post("/api/audio/toggle").isOk
             TvAction.MUTE -> quickNow("mute")
-            TvAction.PLAY_PAUSE -> api.post("/api/remote/key", JSONObject().put("key", "PLAY")) != null
+            TvAction.PLAY_PAUSE -> api.post("/api/remote/key", JSONObject().put("key", "PLAY")).isOk
             TvAction.HOME -> quickNow("home")
             TvAction.NETFLIX, TvAction.YOUTUBE, TvAction.SPOTIFY -> launchNow(TvAction.APP_IDS.getValue(action))
             TvAction.REMOTE -> true
         }
-        if (ok) {
-            delay(600)
-            refresh()
-        }
+        if (ok) delay(600)
+        refresh()
         return ok
     }
 
     companion object {
         @Volatile private var instance: TvRepository? = null
+
+        /** The hub keeps more itself; a short tail is enough for follow-up questions. */
+        const val MAX_HISTORY_TURNS = 10
+
+        /** "/api" answered by a Modern-LG-Hub, or 401 because it wants a token (still our hub). */
+        fun isHubAnswer(result: HubResult): Boolean = when (result) {
+            is HubResult.Ok -> result.body.contains("LG Hub", ignoreCase = true)
+            is HubResult.Rejected -> result.code == 401 && result.message.contains("X-Hub-Token")
+            HubResult.Unreachable -> false
+        }
 
         fun get(context: Context): TvRepository =
             instance ?: synchronized(this) {

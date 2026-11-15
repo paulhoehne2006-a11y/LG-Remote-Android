@@ -17,6 +17,11 @@ class TvPreferences(context: Context) {
     /** Bare host, used for Wake-on-LAN unicast and the webOS pointer socket. */
     val tvHost: String get() = baseUrl.substringAfter("://").substringBefore(":")
 
+    /** Shared secret if the hub runs with GEMINI_TOKEN; sent as X-Hub-Token. Empty = none. */
+    var hubToken: String
+        get() = prefs.getString("hub_token", "") ?: ""
+        set(value) = prefs.edit().putString("hub_token", value.trim()).apply()
+
     var tvMac: String
         get() = prefs.getString("tv_mac", "") ?: ""
         set(value) = prefs.edit().putString("tv_mac", value.trim()).apply()

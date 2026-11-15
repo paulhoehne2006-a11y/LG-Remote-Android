@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.DesktopAccessDisabled
 import androidx.compose.material.icons.rounded.Gamepad
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Keyboard
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Mouse
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -257,6 +258,7 @@ private fun statusLine(state: TvState): Pair<Color, String> {
     return when {
         state.waking -> StatusWarn to "Wird eingeschaltet …"
         state.connection == Connection.CONNECTING -> TextTertiary to "Verbinde …"
+        state.connection == Connection.UNAUTHORIZED -> StatusWarn to "Hub verlangt einen Token"
         state.connection == Connection.OFFLINE -> StatusOff to "Aus oder nicht erreichbar"
         s.isStandby -> StatusWarn to "Standby"
         s.screenOff -> StatusWarn to "Bildschirm aus · ${s.audio.outputLabel}"
@@ -455,6 +457,23 @@ private fun OfflineCard(
                     if (state.waking) "Fernseher startet …" else "Suche Fernseher …",
                     style = MaterialTheme.typography.titleMedium,
                 )
+            }
+            state.connection == Connection.UNAUTHORIZED -> {
+                Icon(Icons.Rounded.Lock, contentDescription = null, tint = StatusWarn, modifier = Modifier.size(40.dp))
+                Spacer(Modifier.height(16.dp))
+                Text("Token erforderlich", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Der Hub unter $hubAddress ist mit GEMINI_TOKEN abgesichert. Trag denselben Token in den Einstellungen ein.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(24.dp))
+                Button(
+                    onClick = onOpenSettings,
+                    colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black),
+                ) { Text("Einstellungen") }
             }
             else -> {
                 Icon(

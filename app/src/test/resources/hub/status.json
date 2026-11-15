@@ -1,0 +1,1 @@
+{"has_key": false, "tv": {"power": "Active", "screen_off": false, "current_app": "netflix", "audio": {"soundOutput": "external_optical", "volume": 23, "muted": false, "is_denon_optical": true, "is_tv_speaker": false, "display_title": "Denon AVR-1803 (Optisch)"}, "network": {"mac_addresses": {"eth0": "02:fc:00:00:00:01"}, "primary_mac": "02:fc:00:00:00:01"}, "success": true}}

@@ -4,11 +4,21 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import androidx.lifecycle.DefaultLifecycleObserver
+import coil.ImageLoader
+import coil.ImageLoaderFactory
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.modernlghub.remote.data.TvRepository
 
-class ModernLgApplication : Application() {
+class ModernLgApplication : Application(), ImageLoaderFactory {
+
+    /** App icons come from the hub, so they use the hub's HTTP client (and its X-Hub-Token). */
+    override fun newImageLoader(): ImageLoader =
+        ImageLoader.Builder(this)
+            .okHttpClient(TvRepository.get(this).api.client)
+            .crossfade(true)
+            .build()
+
 
     override fun onCreate() {
         super.onCreate()

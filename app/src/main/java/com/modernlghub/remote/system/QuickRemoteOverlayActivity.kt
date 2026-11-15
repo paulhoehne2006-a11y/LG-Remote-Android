@@ -218,6 +218,7 @@ private fun OverlayHeader(state: TvState, onClose: () -> Unit, onExpand: () -> U
     val (color, line) = when {
         state.waking -> StatusWarn to "Wird eingeschaltet …"
         state.connection == Connection.CONNECTING -> TextTertiary to "Verbinde …"
+        state.connection == Connection.UNAUTHORIZED -> StatusWarn to "Hub verlangt Token · App öffnen"
         !state.isOnline -> StatusOff to "Aus · tippen zum Einschalten"
         state.status.isStandby -> StatusWarn to "Standby"
         state.status.screenOff -> StatusWarn to "Bildschirm aus"
