@@ -52,10 +52,12 @@ fun DPadControl(
     modifier: Modifier = Modifier,
     onDirection: (Direction) -> Unit,
     onSelect: () -> Unit,
+    onSelectLong: (() -> Unit)? = null,
 ) {
     val haptics = rememberHaptics()
     val currentOnDirection by rememberUpdatedState(onDirection)
     val currentOnSelect by rememberUpdatedState(onSelect)
+    val currentOnSelectLong by rememberUpdatedState(onSelectLong)
     var pressed by remember { mutableStateOf<PadZone?>(null) }
 
     Box(modifier, contentAlignment = Alignment.Center) {
@@ -89,6 +91,7 @@ fun DPadControl(
                         pressed = zone
                         val start = SystemClock.uptimeMillis()
                         var lastRepeat = start
+                        var longFired = false
                         if (zone is PadZone.Arrow) {
                             haptics.click()
                             currentOnDirection(zone.dir)
@@ -98,7 +101,7 @@ fun DPadControl(
                             if (ev != null) {
                                 val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
                                 if (!ch.pressed) {
-                                    if (zone == PadZone.Center && zoneAt(ch.position) == PadZone.Center) {
+                                    if (!longFired && zone == PadZone.Center && zoneAt(ch.position) == PadZone.Center) {
                                         haptics.click()
                                         currentOnSelect()
                                     }
@@ -107,6 +110,13 @@ fun DPadControl(
                                 ch.consume()
                             }
                             val now = SystemClock.uptimeMillis()
+                            // Holding OK = long press (the hub opens its options menu: colour, brightness, …).
+                            val onLong = currentOnSelectLong
+                            if (zone == PadZone.Center && onLong != null && !longFired && now - start > LONG_PRESS_MS) {
+                                longFired = true
+                                haptics.heavy()
+                                onLong()
+                            }
                             if (zone is PadZone.Arrow && now - start > 420 && now - lastRepeat > 110) {
                                 haptics.tick()
                                 currentOnDirection(zone.dir)

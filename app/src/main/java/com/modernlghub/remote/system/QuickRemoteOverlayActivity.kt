@@ -178,6 +178,7 @@ private fun OverlayContent(
                             .height(260.dp),
                         onDirection = { repo.key(it.key) },
                         onSelect = { repo.key("ENTER") },
+                        onSelectLong = { repo.key("LONG_ENTER") },
                     )
                     Spacer(Modifier.height(14.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

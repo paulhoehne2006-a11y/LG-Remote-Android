@@ -49,6 +49,9 @@ import com.modernlghub.remote.ui.theme.TextTertiary
 import kotlin.math.abs
 import kotlin.math.sign
 
+/** How long OK must be held to count as a long press (the hub's own remote uses 600 ms). */
+const val LONG_PRESS_MS = 550L
+
 enum class Direction(val key: String, val icon: ImageVector) {
     UP("UP", Icons.Rounded.KeyboardArrowUp),
     DOWN("DOWN", Icons.Rounded.KeyboardArrowDown),
@@ -61,16 +64,19 @@ enum class Direction(val key: String, val icon: ImageVector) {
  * - every ~36 dp of travel = one step (axis-locked, so diagonals never double-fire)
  * - swipe far and keep the finger resting = continuous scrolling
  * - tap anywhere = OK
+ * - press and hold without moving = long OK (options menu on the hub)
  */
 @Composable
 fun GesturePad(
     modifier: Modifier = Modifier,
     onDirection: (Direction) -> Unit,
     onSelect: () -> Unit,
+    onSelectLong: (() -> Unit)? = null,
 ) {
     val haptics = rememberHaptics()
     val currentOnDirection by rememberUpdatedState(onDirection)
     val currentOnSelect by rememberUpdatedState(onSelect)
+    val currentOnSelectLong by rememberUpdatedState(onSelectLong)
 
     var touching by remember { mutableStateOf(false) }
     var touchPos by remember { mutableStateOf(Offset.Zero) }
@@ -92,7 +98,7 @@ fun GesturePad(
             .clip(shape)
             .background(Surface1)
             .border(1.dp, Hairline, shape)
-            .semantics { contentDescription = "Wischfeld: Wischen zum Navigieren, Tippen für OK" }
+            .semantics { contentDescription = "Wischfeld: Wischen zum Navigieren, Tippen für OK, Halten für Optionen" }
             .drawBehind {
                 if (glow.value > 0f) {
                     drawCircle(
@@ -130,6 +136,8 @@ fun GesturePad(
                     var anchor = down.position
                     var lastMove = SystemClock.uptimeMillis()
                     var lastRepeat = 0L
+                    val start = SystemClock.uptimeMillis()
+                    var longFired = false
 
                     while (true) {
                         val event = withTimeoutOrNull(40L) { awaitPointerEvent() }
@@ -137,7 +145,7 @@ fun GesturePad(
                         if (event != null) {
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
                             if (!change.pressed) {
-                                if (!dragging) {
+                                if (!dragging && !longFired) {
                                     haptics.click()
                                     currentOnSelect()
                                 }
@@ -169,6 +177,12 @@ fun GesturePad(
                                     lastRepeat = now
                                 }
                             }
+                        }
+                        val onLong = currentOnSelectLong
+                        if (!dragging && !longFired && onLong != null && now - start > LONG_PRESS_MS) {
+                            longFired = true
+                            haptics.heavy()
+                            onLong()
                         }
                         // Swiped far and now resting → keep scrolling in that direction.
                         val dir = lastDir
@@ -221,7 +235,7 @@ fun GesturePad(
             Text("OK", color = TextTertiary, style = MaterialTheme.typography.labelLarge)
         }
         Text(
-            "Wischen · Tippen für OK",
+            "Wischen · Tippen OK · Halten Optionen",
             color = TextTertiary,
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier

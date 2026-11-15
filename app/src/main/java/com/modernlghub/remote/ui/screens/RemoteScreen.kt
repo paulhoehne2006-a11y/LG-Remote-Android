@@ -167,9 +167,9 @@ fun RemoteScreen(
                 val padModifier = Modifier.fillMaxSize()
                 when (mode) {
                     -1 -> OfflineCard(state, hubAddress, onIntent, onOpenSettings, padModifier)
-                    1 -> DPadControl(padModifier, onDirection = { onIntent(RemoteIntent.Key(it.key)) }, onSelect = { onIntent(RemoteIntent.Key("ENTER")) })
+                    1 -> DPadControl(padModifier, onDirection = { onIntent(RemoteIntent.Key(it.key)) }, onSelect = { onIntent(RemoteIntent.Key("ENTER")) }, onSelectLong = { onIntent(RemoteIntent.Key("LONG_ENTER")) })
                     2 -> CursorPad(padModifier)
-                    else -> GesturePad(padModifier, onDirection = { onIntent(RemoteIntent.Key(it.key)) }, onSelect = { onIntent(RemoteIntent.Key("ENTER")) })
+                    else -> GesturePad(padModifier, onDirection = { onIntent(RemoteIntent.Key(it.key)) }, onSelect = { onIntent(RemoteIntent.Key("ENTER")) }, onSelectLong = { onIntent(RemoteIntent.Key("LONG_ENTER")) })
                 }
             }
         }
