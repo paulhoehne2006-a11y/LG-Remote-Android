@@ -88,6 +88,8 @@ fun LightControls(device: SmartDevice, onChange: (LightChange) -> Unit) {
     var mode by remember { mutableStateOf<LightMode?>(null) }
     val shownMode = mode ?: if (device.kelvin != null || !device.canColor) LightMode.White else LightMode.Color
     var hue by remember { mutableFloatStateOf(device.rgb?.let(::hueOf) ?: 30f) }
+    // 1 = full colour, 0 = white; in between are pastel tones
+    var sat by remember { mutableFloatStateOf(device.rgb?.let(::saturationOf)?.takeIf { it > 0.05f } ?: 1f) }
     var kelvin by remember { mutableIntStateOf((device.kelvin ?: 2700).coerceIn(SmartDevice.KELVIN_MIN, SmartDevice.KELVIN_MAX)) }
 
     fun send() {
@@ -95,7 +97,7 @@ fun LightControls(device: SmartDevice, onChange: (LightChange) -> Unit) {
             LightChange(
                 on = on,
                 brightness = if (on && device.canDim) brightness.roundToInt() else null,
-                color = if (on && mode == LightMode.Color) SmartDevice.toHexColor(hueToRgb(hue)) else null,
+                color = if (on && mode == LightMode.Color) SmartDevice.toHexColor(hsvToRgb(hue, sat)) else null,
                 kelvin = if (on && mode == LightMode.White) kelvin else null,
             )
         )
@@ -110,7 +112,7 @@ fun LightControls(device: SmartDevice, onChange: (LightChange) -> Unit) {
 
     val lampColor = when {
         shownMode == LightMode.White && device.canWhite -> rgbColor(SmartDevice.kelvinToRgb(kelvin))
-        mode == LightMode.Color -> rgbColor(hueToRgb(hue))
+        mode == LightMode.Color -> rgbColor(hsvToRgb(hue, sat))
         else -> device.rgb?.let(::rgbColor) ?: rgbColor(SmartDevice.kelvinToRgb(2700))
     }
 
@@ -156,10 +158,10 @@ fun LightControls(device: SmartDevice, onChange: (LightChange) -> Unit) {
                 SectionLabel("Farbe")
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     PRESET_COLORS.forEach { rgb ->
-                        val selected = shownMode == LightMode.Color && abs(hueOf(rgb) - hue) < 4f
+                        val selected = shownMode == LightMode.Color && abs(hueOf(rgb) - hue) < 4f && sat > 0.95f
                         Swatch(rgbColor(rgb), selected, Modifier.weight(1f)) {
                             haptics.tick()
-                            adjust { mode = LightMode.Color; hue = hueOf(rgb) }
+                            adjust { mode = LightMode.Color; hue = hueOf(rgb); sat = 1f }
                         }
                     }
                 }
@@ -171,6 +173,17 @@ fun LightControls(device: SmartDevice, onChange: (LightChange) -> Unit) {
                     thumbColor = rgbColor(hueToRgb(hue)),
                     description = "Farbton",
                     onValueChange = { v -> adjust { mode = LightMode.Color; hue = v } },
+                    onFinished = { haptics.tick() },
+                )
+                Spacer(Modifier.height(14.dp))
+                LabelRow("Sättigung", "${(sat * 100).roundToInt()} %")
+                GradientSlider(
+                    value = sat,
+                    range = 0f..1f,
+                    brush = Brush.horizontalGradient(listOf(Color.White, rgbColor(hueToRgb(hue)))),
+                    thumbColor = rgbColor(hsvToRgb(hue, sat)),
+                    description = "Sättigung",
+                    onValueChange = { v -> adjust { mode = LightMode.Color; sat = (v * 100f).roundToInt() / 100f } },
                     onFinished = { haptics.tick() },
                 )
                 Spacer(Modifier.height(20.dp))
@@ -297,6 +310,19 @@ internal fun rgbColor(rgb: Int) = Color(0xFF000000.toInt() or (rgb and 0xFFFFFF)
 
 /** Fully saturated colour at [hue] degrees, as 0xRRGGBB. */
 internal fun hueToRgb(hue: Float): Int = Color.hsv(hue.coerceIn(0f, 360f) % 360f, 1f, 1f).toArgb() and 0xFFFFFF
+
+/** Colour at [hue] degrees with saturation [sat] (0 = white, 1 = full colour) at full value, as 0xRRGGBB. */
+internal fun hsvToRgb(hue: Float, sat: Float): Int =
+    Color.hsv(hue.coerceIn(0f, 360f) % 360f, sat.coerceIn(0f, 1f), 1f).toArgb() and 0xFFFFFF
+
+/** Saturation (0..1) of 0xRRGGBB. */
+internal fun saturationOf(rgb: Int): Float {
+    val r = (rgb shr 16 and 0xFF) / 255f
+    val g = (rgb shr 8 and 0xFF) / 255f
+    val b = (rgb and 0xFF) / 255f
+    val max = maxOf(r, g, b)
+    return if (max == 0f) 0f else (max - minOf(r, g, b)) / max
+}
 
 /** Hue in degrees (0..360) of 0xRRGGBB. */
 internal fun hueOf(rgb: Int): Float {
