@@ -10,8 +10,8 @@
 
     <string name="shortcut_overlay_short">Fernbedienung</string>
     <string name="shortcut_overlay_long">Mini-Fernbedienung öffnen</string>
-    <string name="shortcut_screen_off_short">Bild aus/an</string>
-    <string name="shortcut_screen_off_long">Bild aus- oder einschalten, der Ton läuft weiter</string>
+    <string name="shortcut_screen_off_short">Display aus/an</string>
+    <string name="shortcut_screen_off_long">Display aus- oder einschalten, der Ton läuft weiter</string>
     <string name="shortcut_pc_short">PC</string>
     <string name="shortcut_pc_long">Auf PC (HDMI 1) umschalten</string>
     <string name="shortcut_audio_short">Denon ⇄ TV</string>

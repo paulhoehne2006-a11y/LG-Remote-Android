@@ -3,13 +3,13 @@
 Android-Fernbedienung für den **LG OLED G4** mit gerootetem webOS und
 [Modern-LG-Hub](https://github.com/paulhoehne2006-a11y/Modern-LG-Hub). Spricht direkt
 mit dem Hub auf dem Fernseher (`http://<tv-ip>:8080`), ohne Cloud. Nur der Mauszeiger braucht eine
-einmalige Kopplung am TV, nur der Assistent nutzt Gemini (Google).
+einmalige Kopplung am TV, nur Gemini nutzt die Google-Cloud.
 
 <p>
   <img src="docs/screenshots/remote_netflix.png" width="200" alt="Fernbedienung" />
   <img src="docs/screenshots/remote_pc_dpad.png" width="200" alt="Steuerkreuz am PC-Eingang" />
   <img src="docs/screenshots/apps.png" width="200" alt="Apps" />
-  <img src="docs/screenshots/smarthome.png" width="200" alt="Zuhause" />
+  <img src="docs/screenshots/smarthome.png" width="200" alt="Smart Home" />
   <img src="docs/screenshots/smarthome_light.png" width="200" alt="Helligkeit und Farbe" />
 </p>
 
@@ -19,7 +19,7 @@ einmalige Kopplung am TV, nur der Assistent nutzt Gemini (Google).
 - Wischfeld: ein Schritt pro ~36 dp, achsenstabil (keine Doppelschritte bei schrägem Wischen),
   weit wischen und Finger liegen lassen = Dauerscrollen, Tippen = OK
 - Alternativ klassisches Steuerkreuz (Halten wiederholt) oder Mauszeiger (webOS Magic Remote)
-- Schnellschalter: Audioausgabe Denon ⇄ TV (lange drücken für alle Ausgänge), Bild aus/an
+- Schnellschalter: Audioausgabe Denon ⇄ TV (lange drücken für alle Ausgänge), Display aus/an
   (Audio läuft weiter), PC (HDMI 1), Bildmodus
 - Lautstärke über die Tasten des Handys oder −/+ (Halten wiederholt; beim Loslassen stoppt der TV sofort), Texteingabe mit der Handytastatur (live ins Suchfeld),
   Ziffern, Farb- und Medientasten
@@ -28,8 +28,8 @@ einmalige Kopplung am TV, nur der Assistent nutzt Gemini (Google).
 
 **Weitere Bereiche**
 - **Apps** – alle Apps und HDMI-Eingänge mit echten Icons vom Fernseher
-- **Zuhause** – WiZ-Lampen und Tapo-Steckdosen, lokal über den Hub, nach Räumen sortiert; Lampen mit Helligkeit, Farbe, Sättigung und Weißlicht (lange drücken oder Regler-Symbol)
-- **Assistent** – Gemini-Befehle per Text oder Sprache („Bild aus, Musik soll weiterlaufen“)
+- **Smart Home** – WiZ-Lampen und Tapo-Steckdosen, lokal über den Hub, nach Räumen sortiert; Lampen mit Helligkeit, Farbe, Sättigung und Weißlicht (lange drücken oder Regler-Symbol)
+- **Gemini** – Befehle per Text oder Sprache („Display aus, Musik soll weiterlaufen“)
 
 **System-Integration (One UI)**
 - Schnelleinstellungs-Kachel öffnet die Mini-Fernbedienung; 2×2-Widget mit vier frei belegbaren Tasten
@@ -37,7 +37,7 @@ einmalige Kopplung am TV, nur der Assistent nutzt Gemini (Google).
 - Optionale *Live-Steuerung*: Steuerung im Sperrbildschirm / in der Now Bar, die Medienlautstärke
   regelt den TV; fragt den TV nur im Heimnetz (WLAN/Ethernet) ab und seltener, solange er aus ist
 - App-Verknüpfungen und Ziel für *Modi und Routinen*
-  (Intent `com.modernlghub.remote.action.SHORTCUT`, Extra `action` = `screen_off` (Bild aus/an),
+  (Intent `com.modernlghub.remote.action.SHORTCUT`, Extra `action` = `screen_off` (Display aus/an),
   `pc`, `audio_toggle`, `power` (umschalten), `power_on`, `power_off`, `mute`, `play_pause`, `home`,
   `netflix`, `youtube`, `spotify`, `overlay`)
 
@@ -69,7 +69,7 @@ Pushes auf `main` aktualisieren zusätzlich das Release `latest`.
 | `data/TvRepository.kt` | Zustand des Fernsehers, Polling bei sichtbarer UI oder aktiver Live-Steuerung, geordnete Tasten-Queue, Wake-on-LAN, Hub-Suche |
 | `data/HubApi.kt` | HTTP zum Hub mit eigenen Timeouts pro Aufruf |
 | `data/WebOsPointerClient.kt` | Mauszeiger über webOS SSAP (`wss://tv:3001`), Kopplung wird gespeichert |
-| `ui/screens/` | Fernbedienung, Apps, Zuhause, Assistent, Einstellungen |
+| `ui/screens/` | Fernbedienung, Apps, Smart Home, Gemini, Einstellungen |
 | `system/` | Mini-Fernbedienung, Kachel, Widget, Verknüpfungen, Live-Steuerung |
 
 `app/src/main/assets/webos_pairing.json` stammt aus [lgtv2](https://github.com/hobbyquaker/lgtv2) (MIT).

@@ -94,7 +94,7 @@ class TvRemoteWidgetProvider : AppWidgetProvider() {
             state.waking -> "Wird eingeschaltet …"
             !state.isOnline -> "Aus"
             state.status.isStandby -> "Standby"
-            state.status.screenOff -> "Bild aus"
+            state.status.screenOff -> "Display aus"
             else -> state.appTitle().ifBlank { "An" }
         }
 

@@ -194,7 +194,7 @@ class TvPresenceService : Service() {
         state.connection == Connection.CONNECTING -> "Verbinde …"
         !state.isOnline -> "Aus"
         state.status.isStandby -> "Standby"
-        state.status.screenOff -> "Bild aus · ${state.status.audio.outputLabel}"
+        state.status.screenOff -> "Display aus · ${state.status.audio.outputLabel}"
         else -> state.status.audio.outputLabel
     }
 
@@ -213,7 +213,7 @@ class TvPresenceService : Service() {
 
         if (on) {
             builder.addAction(action(R.drawable.ic_play, if (playing) "Pause" else "Wiedergabe", ACTION_PLAY, null, 1))
-            builder.addAction(action(R.drawable.ic_oled_off, if (state.status.screenOff) "Bild an" else "Bild aus", null, TvAction.SCREEN.key, 2))
+            builder.addAction(action(R.drawable.ic_oled_off, if (state.status.screenOff) "Display an" else "Display aus", null, TvAction.SCREEN.key, 2))
             builder.addAction(action(R.drawable.ic_mute, if (state.status.audio.muted) "Ton an" else "Stumm", null, TvAction.MUTE.key, 3))
             builder.setStyle(Notification.MediaStyle().setMediaSession(session.sessionToken).setShowActionsInCompactView(0, 1, 2))
         } else {

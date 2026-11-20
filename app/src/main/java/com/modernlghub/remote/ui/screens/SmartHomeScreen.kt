@@ -86,7 +86,7 @@ import kotlinx.coroutines.launch
 private const val LIGHT_UPDATE_INTERVAL_MS = 220L
 
 /**
- * State of the Zuhause tab. Lives above the tab switcher, so the device list, pending toggles and
+ * State of the Smart Home tab. Lives above the tab switcher, so the device list, pending toggles and
  * the last lamp update survive switching tabs (they used to be cancelled mid-flight).
  */
 @Stable
@@ -193,7 +193,7 @@ fun SmartHomeScreen(
     ) {
         item(span = { GridItemSpan(maxLineSpan) }, key = "header") {
             ScreenHeader(
-                "Zuhause",
+                "Smart Home",
                 subtitle = when {
                     devices == null -> "Lichter und Steckdosen"
                     list.isEmpty() -> "Lichter und Steckdosen"

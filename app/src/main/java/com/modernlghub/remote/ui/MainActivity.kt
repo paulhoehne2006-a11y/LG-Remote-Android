@@ -123,8 +123,8 @@ private data class Tab(val label: String, val icon: ImageVector)
 private val TABS = listOf(
     Tab("Fernbedienung", Icons.Rounded.SettingsRemote),
     Tab("Apps", Icons.Rounded.Apps),
-    Tab("Zuhause", Icons.Rounded.Lightbulb),
-    Tab("Assistent", Icons.Rounded.AutoAwesome),
+    Tab("Smart Home", Icons.Rounded.Lightbulb),
+    Tab("Gemini", Icons.Rounded.AutoAwesome),
 )
 
 private const val SETTINGS = -1

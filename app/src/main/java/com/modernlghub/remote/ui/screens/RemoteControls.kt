@@ -119,8 +119,8 @@ internal fun QuickChips(
                 onLongClickLabel = "Audioausgabe wählen", onLongClick = onSoundMenu, onClick = onSound,
             )
             ToggleChip(
-                "Bild aus", active = s.screenOff, icon = Icons.Rounded.DesktopAccessDisabled, modifier = w(1.1f), showIcon = icons,
-                stateLabel = if (s.screenOff) "Bild ist aus" else "Bild ist an", onClick = onScreen,
+                "Display aus", active = s.screenOff, icon = Icons.Rounded.DesktopAccessDisabled, modifier = w(1.1f), showIcon = icons,
+                stateLabel = if (s.screenOff) "Display ist aus" else "Display ist an", onClick = onScreen,
             )
             ToggleChip(
                 "PC", active = s.currentAppId == PC_INPUT_ID, icon = Icons.Rounded.Computer, modifier = w(0.7f), showIcon = icons,

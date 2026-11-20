@@ -74,7 +74,7 @@ class HubCompatibilityTest {
     @Test
     fun `history uses the hub's role names`() {
         val json = AssistantTurn.toJson(
-            listOf(AssistantTurn(true, "Bild aus"), AssistantTurn(false, "Erledigt."), AssistantTurn(true, " "))
+            listOf(AssistantTurn(true, "Display aus"), AssistantTurn(false, "Erledigt."), AssistantTurn(true, " "))
         )
         assertEquals(2, json.length())
         assertEquals("user", json.getJSONObject(0).getString("role"))

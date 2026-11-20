@@ -105,7 +105,7 @@ internal fun statusLine(state: TvState): Pair<Color, String> {
         state.connection == Connection.UNAUTHORIZED -> StatusWarn to "Hub verlangt einen Token"
         state.connection == Connection.OFFLINE -> StatusOff to "Aus oder nicht erreichbar"
         s.isStandby -> StatusWarn to "Standby"
-        s.screenOff -> StatusWarn to "Bild aus · ${s.audio.outputLabel}"
+        s.screenOff -> StatusWarn to "Display aus · ${s.audio.outputLabel}"
         else -> {
             val app = state.appTitle().ifBlank { "Eingeschaltet" }
             StatusOn to "$app · ${s.audio.outputLabel}"
@@ -189,7 +189,7 @@ internal fun RemoteStatePanel(
         )
         else -> StatePanel(
             title = "Fernseher im Standby",
-            body = "Der Hub ist erreichbar, das Bild ist aus.",
+            body = "Der Hub ist erreichbar, das Display ist aus.",
             icon = Icons.Rounded.Tv,
             primary = wake,
             modifier = panel,

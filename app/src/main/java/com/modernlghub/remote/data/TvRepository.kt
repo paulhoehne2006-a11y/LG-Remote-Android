@@ -543,7 +543,7 @@ class TvRepository private constructor(private val appContext: Context) {
             notify(
                 when {
                     res is HubResult.Rejected && res.code == 401 -> "Hub verlangt einen gültigen Token (Einstellungen)"
-                    res is HubResult.Rejected -> "Zuhause: ${res.message}"
+                    res is HubResult.Rejected -> "Smart Home: ${res.message}"
                     else -> "Hub antwortet nicht"
                 }
             )
@@ -551,11 +551,11 @@ class TvRepository private constructor(private val appContext: Context) {
         }
         val json = parseObjectOrNull(res.body)
         if (json == null) {
-            notify("Zuhause: unerwartete Antwort")
+            notify("Smart Home: unerwartete Antwort")
             return null
         }
         if (json.str("status") == "error" || json.opt("success") == false) {
-            notify("Zuhause: ${json.str("error").ifBlank { "Fehler" }}")
+            notify("Smart Home: ${json.str("error").ifBlank { "Fehler" }}")
             return null
         }
         return json

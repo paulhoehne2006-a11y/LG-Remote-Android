@@ -168,7 +168,7 @@ class AssistantController(
 }
 
 private val SUGGESTIONS = listOf(
-    "Mach das Bild aus, die Musik soll weiterlaufen",
+    "Mach das Display aus, die Musik soll weiterlaufen",
     "PC an und Game Optimizer",
     "Filmabend: TV-Licht an, Netflix starten",
     "Alles aus",
@@ -214,7 +214,7 @@ fun AssistantScreen(
 
     Column(modifier.fillMaxSize()) {
         ScreenHeader(
-            "Assistent",
+            "Gemini",
             subtitle = "Gemini steuert Fernseher, Ton und Licht",
             modifier = Modifier.padding(horizontal = Spacing.Gutter).padding(top = Spacing.s),
         ) {
@@ -231,7 +231,7 @@ fun AssistantScreen(
                 online && !hasKey -> KeyCard(saveKey, Modifier.verticalScroll(rememberScrollState()))
                 !online && messages.isEmpty() -> StatePanel(
                     title = "Hub nicht erreichbar",
-                    body = "Der Assistent läuft auf dem Hub am Fernseher. Sobald der erreichbar ist, geht es hier weiter.",
+                    body = "Gemini läuft über den Hub am Fernseher. Sobald der erreichbar ist, geht es hier weiter.",
                     icon = Icons.Rounded.WifiOff,
                     tint = TextSecondary,
                     modifier = Modifier.fillMaxSize(),
@@ -396,7 +396,7 @@ private fun ThinkingIndicator() {
     val reduce = LocalReduceMotion.current
     val t = rememberInfiniteTransition(label = "thinking")
     Row(
-        Modifier.semantics { contentDescription = "Assistent denkt nach" },
+        Modifier.semantics { contentDescription = "Gemini denkt nach" },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = Accent, modifier = Modifier.size(18.dp))

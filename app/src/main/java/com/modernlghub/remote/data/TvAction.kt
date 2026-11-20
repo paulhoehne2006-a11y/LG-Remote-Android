@@ -8,7 +8,7 @@ import com.modernlghub.remote.R
  */
 enum class TvAction(val key: String, val label: String, val shortLabel: String, val iconRes: Int) {
     POWER("power", "Ein / Aus", "Power", R.drawable.ic_power),
-    SCREEN("screen_off", "Bildschirm aus / an (Audio läuft weiter)", "Display", R.drawable.ic_oled_off),
+    SCREEN("screen_off", "Display aus / an (Audio läuft weiter)", "Display", R.drawable.ic_oled_off),
     PC("pc", "PC (HDMI 1)", "PC", R.drawable.ic_pc),
     REMOTE("overlay", "Mini-Fernbedienung öffnen", "Remote", R.drawable.ic_remote),
     AUDIO("audio_toggle", "Audio: Denon ⇄ TV", "Audio", R.drawable.ic_audio),

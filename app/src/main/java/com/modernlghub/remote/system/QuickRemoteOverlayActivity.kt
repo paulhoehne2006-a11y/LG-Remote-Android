@@ -232,8 +232,8 @@ fun QuickRemotePanel(state: TvState, actions: OverlayActions, onClose: () -> Uni
                         onClick = actions::sound,
                     )
                     ToggleChip(
-                        "Bild aus", active = state.status.screenOff, icon = Icons.Rounded.DesktopAccessDisabled,
-                        stateLabel = if (state.status.screenOff) "Bild ist aus" else "Bild ist an", modifier = Modifier.weight(1f),
+                        "Display aus", active = state.status.screenOff, icon = Icons.Rounded.DesktopAccessDisabled,
+                        stateLabel = if (state.status.screenOff) "Display ist aus" else "Display ist an", modifier = Modifier.weight(1f),
                         onClick = actions::screen,
                     )
                 }
