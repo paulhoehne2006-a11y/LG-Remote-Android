@@ -20,6 +20,8 @@ sealed interface RemoteIntent {
     data object VolumeDown : RemoteIntent
     data object Mute : RemoteIntent
     data object Retry : RemoteIntent
+    /** A held key was released: keys still waiting are dropped so the TV stops at once. */
+    data object StopRepeat : RemoteIntent
 }
 
 fun TvRepository.handle(intent: RemoteIntent) {
@@ -38,5 +40,6 @@ fun TvRepository.handle(intent: RemoteIntent) {
         RemoteIntent.VolumeDown -> volumeDown()
         RemoteIntent.Mute -> toggleMute()
         RemoteIntent.Retry -> resetConnection()
+        RemoteIntent.StopRepeat -> cancelPendingKeys()
     }
 }

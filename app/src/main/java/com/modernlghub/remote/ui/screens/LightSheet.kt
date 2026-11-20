@@ -1,5 +1,6 @@
 package com.modernlghub.remote.ui.screens
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -10,12 +11,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -26,30 +31,40 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import com.modernlghub.remote.data.SmartDevice
 import com.modernlghub.remote.ui.components.RemoteSheet
-import com.modernlghub.remote.ui.components.SectionLabel
 import com.modernlghub.remote.ui.components.pressable
 import com.modernlghub.remote.ui.components.rememberHaptics
 import com.modernlghub.remote.ui.theme.Accent
-import com.modernlghub.remote.ui.theme.AccentDim
 import com.modernlghub.remote.ui.theme.Hairline
+import com.modernlghub.remote.ui.theme.Motion
+import com.modernlghub.remote.ui.theme.OnAccent
+import com.modernlghub.remote.ui.theme.Shape
+import com.modernlghub.remote.ui.theme.Spacing
+import com.modernlghub.remote.ui.theme.Surface1
 import com.modernlghub.remote.ui.theme.Surface2
-import com.modernlghub.remote.ui.theme.Surface3
 import com.modernlghub.remote.ui.theme.TextPrimary
 import com.modernlghub.remote.ui.theme.TextSecondary
+import com.modernlghub.remote.ui.theme.motion
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -68,7 +83,8 @@ data class LightChange(
 private enum class LightMode { Color, White }
 
 private val PRESET_COLORS = listOf(
-    0xFF3B1F, 0xFF8A00, 0xFFD400, 0x3BDC5A, 0x00D2FF, 0x2F5BFF, 0x9B3BFF, 0xFF3BA7,
+    0xFF3B1F to "Rot", 0xFF8A00 to "Orange", 0xFFD400 to "Gelb", 0x3BDC5A to "Grün",
+    0x00D2FF to "Cyan", 0x2F5BFF to "Blau", 0x9B3BFF to "Violett", 0xFF3BA7 to "Pink",
 )
 
 private val WHITE_PRESETS = listOf("Warm" to 2700, "Neutral" to 4000, "Tageslicht" to 6500)
@@ -82,15 +98,18 @@ fun LightSheet(device: SmartDevice, onChange: (LightChange) -> Unit, onDismiss: 
 @Composable
 fun LightControls(device: SmartDevice, onChange: (LightChange) -> Unit) {
     val haptics = rememberHaptics()
-    var on by remember { mutableStateOf(device.isOn) }
-    var brightness by remember { mutableFloatStateOf((device.brightness ?: 100).coerceIn(10, 100).toFloat()) }
-    // null = the user hasn't picked a colour/white yet, so the lamp keeps whatever it shows now.
-    var mode by remember { mutableStateOf<LightMode?>(null) }
-    val shownMode = mode ?: if (device.kelvin != null || !device.canColor) LightMode.White else LightMode.Color
-    var hue by remember { mutableFloatStateOf(device.rgb?.let(::hueOf) ?: 30f) }
-    // 1 = full colour, 0 = white; in between are pastel tones
-    var sat by remember { mutableFloatStateOf(device.rgb?.let(::saturationOf)?.takeIf { it > 0.05f } ?: 1f) }
-    var kelvin by remember { mutableIntStateOf((device.kelvin ?: 2700).coerceIn(SmartDevice.KELVIN_MIN, SmartDevice.KELVIN_MAX)) }
+    // Saveable: rotating the phone with the sheet open keeps what was set.
+    var on by rememberSaveable(device.id) { mutableStateOf(device.isOn) }
+    var brightness by rememberSaveable(device.id) { mutableFloatStateOf((device.brightness ?: 100).coerceIn(10, 100).toFloat()) }
+    // null = nothing picked yet, so the lamp keeps whatever colour it shows now.
+    var mode by rememberSaveable(device.id) { mutableStateOf<LightMode?>(null) }
+    var tab by rememberSaveable(device.id) {
+        mutableStateOf(if (device.kelvin != null || !device.canColor) LightMode.White else LightMode.Color)
+    }
+    var hue by rememberSaveable(device.id) { mutableFloatStateOf(device.rgb?.let(::hueOf) ?: 30f) }
+    // 1 = full colour, 0 = white; in between are pastel tones.
+    var sat by rememberSaveable(device.id) { mutableFloatStateOf(device.rgb?.let(::saturationOf)?.takeIf { it > 0.05f } ?: 1f) }
+    var kelvin by rememberSaveable(device.id) { mutableIntStateOf((device.kelvin ?: 2700).coerceIn(SmartDevice.KELVIN_MIN, SmartDevice.KELVIN_MAX)) }
 
     fun send() {
         onChange(
@@ -111,35 +130,51 @@ fun LightControls(device: SmartDevice, onChange: (LightChange) -> Unit) {
     }
 
     val lampColor = when {
-        shownMode == LightMode.White && device.canWhite -> rgbColor(SmartDevice.kelvinToRgb(kelvin))
+        mode == LightMode.White -> rgbColor(SmartDevice.kelvinToRgb(kelvin))
         mode == LightMode.Color -> rgbColor(hsvToRgb(hue, sat))
-        else -> device.rgb?.let(::rgbColor) ?: rgbColor(SmartDevice.kelvinToRgb(2700))
+        else -> device.rgb?.let(::rgbColor) ?: rgbColor(SmartDevice.kelvinToRgb(kelvin))
     }
+    val orb by animateColorAsState(if (on) lampColor else Surface2, motion(Motion.Medium), label = "orb")
+    val showTabs = device.canColor && device.canWhite
 
     Column {
+        // Lamp orb + name + switch.
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(device.name, style = MaterialTheme.typography.titleLarge, color = TextPrimary)
-                if (device.room.isNotBlank()) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(device.room, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            Box(
+                Modifier
+                    .size(56.dp)
+                    .drawBehind {
+                        if (on) drawCircle(Brush.radialGradient(listOf(orb.copy(alpha = 0.45f * (brightness / 100f) + 0.15f), Color.Transparent), radius = size.minDimension))
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(Modifier.size(40.dp).clip(CircleShape).background(orb), contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Rounded.Lightbulb, null,
+                        tint = if (on && orb.luminance() > 0.35f) Color.Black else if (on) Color.White else TextSecondary,
+                        modifier = Modifier.size(22.dp),
+                    )
                 }
+            }
+            Spacer(Modifier.width(Spacing.m))
+            Column(Modifier.weight(1f)) {
+                Text(device.name, style = MaterialTheme.typography.titleLarge, color = TextPrimary, modifier = Modifier.semantics { heading() })
+                Text(
+                    listOfNotNull(device.room.takeIf { it.isNotBlank() }, if (on) "An" else "Aus").joinToString(" · "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                )
             }
             Switch(
                 checked = on,
                 onCheckedChange = { on = it; haptics.confirm(); send() },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.Black,
-                    checkedTrackColor = Accent,
-                    uncheckedThumbColor = TextSecondary,
-                    uncheckedTrackColor = Surface2,
-                    uncheckedBorderColor = Hairline,
-                ),
+                modifier = Modifier.semantics { contentDescription = device.name },
+                colors = switchColors(),
             )
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(Spacing.xl))
 
-        Column(Modifier.alpha(if (on) 1f else 0.55f)) {
+        Column(Modifier.graphicsLayer { alpha = if (on) 1f else 0.55f }) {
             if (device.canDim) {
                 LabelRow("Helligkeit", "${brightness.roundToInt()} %")
                 GradientSlider(
@@ -148,24 +183,38 @@ fun LightControls(device: SmartDevice, onChange: (LightChange) -> Unit) {
                     brush = Brush.horizontalGradient(listOf(lampColor.copy(alpha = 0.18f), lampColor)),
                     thumbColor = lampColor,
                     description = "Helligkeit",
-                    onValueChange = { v -> adjust { brightness = v } },
+                    onValueChange = { v ->
+                        // A light detent every 10 %.
+                        if ((v / 10f).toInt() != (brightness / 10f).toInt()) haptics.light()
+                        adjust { brightness = v }
+                    },
                     onFinished = { haptics.tick() },
                 )
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(Spacing.xl))
             }
 
-            if (device.canColor) {
-                SectionLabel("Farbe")
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    PRESET_COLORS.forEach { rgb ->
-                        val selected = shownMode == LightMode.Color && abs(hueOf(rgb) - hue) < 4f && sat > 0.95f
-                        Swatch(rgbColor(rgb), selected, Modifier.weight(1f)) {
+            if (showTabs) {
+                Segmented(
+                    options = listOf(LightMode.Color to "Farbe", LightMode.White to "Weißlicht"),
+                    selected = tab,
+                    onSelect = { haptics.tick(); tab = it },
+                )
+                Spacer(Modifier.height(Spacing.l + Spacing.xs))
+            }
+
+            if (device.canColor && (tab == LightMode.Color || !device.canWhite)) {
+                if (!showTabs) LabelRow("Farbe", null)
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s), modifier = Modifier.fillMaxWidth()) {
+                    PRESET_COLORS.forEach { (rgb, name) ->
+                        val selected = mode == LightMode.Color && hueDistance(hueOf(rgb), hue) < 4f && sat > 0.95f
+                        Swatch(rgbColor(rgb), name, selected, Modifier.weight(1f)) {
                             haptics.tick()
                             adjust { mode = LightMode.Color; hue = hueOf(rgb); sat = 1f }
                         }
                     }
                 }
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(Spacing.l))
+                LabelRow("Farbton", null)
                 GradientSlider(
                     value = hue,
                     range = 0f..360f,
@@ -175,7 +224,7 @@ fun LightControls(device: SmartDevice, onChange: (LightChange) -> Unit) {
                     onValueChange = { v -> adjust { mode = LightMode.Color; hue = v } },
                     onFinished = { haptics.tick() },
                 )
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(Spacing.m))
                 LabelRow("Sättigung", "${(sat * 100).roundToInt()} %")
                 GradientSlider(
                     value = sat,
@@ -186,21 +235,20 @@ fun LightControls(device: SmartDevice, onChange: (LightChange) -> Unit) {
                     onValueChange = { v -> adjust { mode = LightMode.Color; sat = (v * 100f).roundToInt() / 100f } },
                     onFinished = { haptics.tick() },
                 )
-                Spacer(Modifier.height(20.dp))
             }
 
-            if (device.canWhite) {
-                LabelRow("Weißlicht", "$kelvin K")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            if (device.canWhite && (tab == LightMode.White || !device.canColor)) {
+                LabelRow(if (showTabs) "Farbtemperatur" else "Weißlicht", "$kelvin K")
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s), modifier = Modifier.fillMaxWidth()) {
                     WHITE_PRESETS.forEach { (label, k) ->
-                        val selected = shownMode == LightMode.White && abs(kelvin - k) < 150
+                        val selected = mode == LightMode.White && abs(kelvin - k) < 150
                         PresetChip(label, rgbColor(SmartDevice.kelvinToRgb(k)), selected, Modifier.weight(1f)) {
                             haptics.tick()
                             adjust { mode = LightMode.White; kelvin = k }
                         }
                     }
                 }
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(Spacing.m))
                 GradientSlider(
                     value = kelvin.toFloat(),
                     range = SmartDevice.KELVIN_MIN.toFloat()..SmartDevice.KELVIN_MAX.toFloat(),
@@ -218,10 +266,53 @@ fun LightControls(device: SmartDevice, onChange: (LightChange) -> Unit) {
 }
 
 @Composable
-private fun LabelRow(label: String, value: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        SectionLabel(label, Modifier.weight(1f))
-        Text(value, style = MaterialTheme.typography.labelMedium, color = TextSecondary, modifier = Modifier.padding(bottom = 8.dp))
+internal fun switchColors() = SwitchDefaults.colors(
+    checkedThumbColor = OnAccent,
+    checkedTrackColor = Accent,
+    checkedBorderColor = Accent,
+    uncheckedThumbColor = TextSecondary,
+    uncheckedTrackColor = Surface2,
+    uncheckedBorderColor = Hairline,
+)
+
+private fun hueDistance(a: Float, b: Float): Float {
+    val d = abs(a - b) % 360f
+    return if (d > 180f) 360f - d else d
+}
+
+@Composable
+private fun LabelRow(label: String, value: String?) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = Spacing.xs)) {
+        Text(label, style = MaterialTheme.typography.titleSmall, color = TextPrimary, modifier = Modifier.weight(1f))
+        if (value != null) Text(value, style = MaterialTheme.typography.labelLarge, color = TextSecondary)
+    }
+}
+
+@Composable
+private fun <T> Segmented(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(Shape.Pill)
+            .background(Surface2)
+            .padding(3.dp),
+    ) {
+        options.forEach { (value, label) ->
+            val isSel = value == selected
+            val bg by animateColorAsState(if (isSel) Surface1 else Color.Transparent, motion(Motion.Medium), label = "seg")
+            Box(
+                Modifier
+                    .weight(1f)
+                    .heightIn(min = 42.dp)
+                    .semantics { role = Role.Tab; this.selected = isSel }
+                    .pressable(role = Role.Tab, pressedScale = 0.98f) { onSelect(value) }
+                    .clip(Shape.Pill)
+                    .background(bg),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(label, style = MaterialTheme.typography.labelLarge, color = if (isSel) TextPrimary else TextSecondary)
+            }
+        }
     }
 }
 
@@ -258,39 +349,44 @@ private fun GradientSlider(
                 Modifier
                     .fillMaxWidth()
                     .height(14.dp)
-                    .clip(RoundedCornerShape(7.dp))
+                    .clip(Shape.Pill)
                     .background(brush)
-                    .border(1.dp, Hairline, RoundedCornerShape(7.dp))
+                    .border(1.dp, Hairline, Shape.Pill)
             )
         },
     )
 }
 
 @Composable
-private fun Swatch(color: Color, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun Swatch(color: Color, name: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     Box(
         modifier
             .widthIn(max = 44.dp)
             .aspectRatio(1f)
-            .clip(CircleShape)
+            .semantics {
+                contentDescription = name
+                this.selected = selected
+                if (selected) stateDescription = "Ausgewählt"
+            }
+            .pressable(onClick = onClick)
             .border(2.dp, if (selected) Color.White else Color.Transparent, CircleShape)
             .padding(4.dp)
             .clip(CircleShape)
-            .background(color)
-            .pressable(onClick = onClick)
+            .background(color),
     )
 }
 
 @Composable
 private fun PresetChip(label: String, tone: Color, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(14.dp)
     Row(
         modifier
-            .clip(shape)
-            .background(if (selected) AccentDim else Surface2)
-            .border(1.dp, if (selected) Accent else Hairline, shape)
+            .heightIn(min = 44.dp)
+            .semantics { this.selected = selected }
             .pressable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 10.dp),
+            .clip(Shape.Pill)
+            .background(if (selected) Surface1 else Surface2)
+            .border(1.dp, if (selected) TextSecondary else Hairline, Shape.Pill)
+            .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
@@ -299,7 +395,6 @@ private fun PresetChip(label: String, tone: Color, selected: Boolean, modifier: 
                 .size(12.dp)
                 .clip(CircleShape)
                 .background(tone)
-                .border(1.dp, Surface3, CircleShape)
         )
         Spacer(Modifier.size(6.dp))
         Text(label, style = MaterialTheme.typography.labelMedium, color = if (selected) TextPrimary else TextSecondary, maxLines = 1)

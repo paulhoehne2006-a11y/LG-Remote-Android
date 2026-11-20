@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Modern-LG-Remote"
+rootProject.name = "LG-Remote"
 include(":app")

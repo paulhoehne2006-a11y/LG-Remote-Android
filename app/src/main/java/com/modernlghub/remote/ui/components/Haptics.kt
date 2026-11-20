@@ -12,7 +12,12 @@ import com.modernlghub.remote.data.TvPreferences
 
 /**
  * Haptics built on Android's composition primitives, which the Galaxy S-series renders with
- * its linear motor: a light TICK for swipe steps, CLICK for buttons, THUD for power.
+ * its linear motor. One vocabulary for the whole app:
+ * - [light]: auto-repeat steps and slider detents (barely there, so a long repeat never buzzes)
+ * - [tick]: one swipe step, volume step, segment change
+ * - [click]: buttons and OK
+ * - [heavy]: power, long-press actions
+ * - [confirm]: switching something on the TV or a lamp
  * Older devices fall back to the predefined effects.
  */
 class Haptics(context: Context) {
@@ -26,6 +31,7 @@ class Haptics(context: Context) {
         }
 
     private enum class Kind(val predefined: Int) {
+        LIGHT(VibrationEffect.EFFECT_TICK),
         TICK(VibrationEffect.EFFECT_TICK),
         CLICK(VibrationEffect.EFFECT_CLICK),
         HEAVY(VibrationEffect.EFFECT_HEAVY_CLICK),
@@ -41,6 +47,7 @@ class Haptics(context: Context) {
     private fun composed(v: Vibrator, kind: Kind): VibrationEffect? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
         val (primitive, scale) = when (kind) {
+            Kind.LIGHT -> VibrationEffect.Composition.PRIMITIVE_TICK to 0.35f
             Kind.TICK -> VibrationEffect.Composition.PRIMITIVE_TICK to 0.7f
             Kind.CLICK -> VibrationEffect.Composition.PRIMITIVE_CLICK to 0.8f
             Kind.HEAVY -> VibrationEffect.Composition.PRIMITIVE_THUD to 1f
@@ -50,6 +57,7 @@ class Haptics(context: Context) {
         return VibrationEffect.startComposition().addPrimitive(primitive, scale).compose()
     }
 
+    fun light() = play(Kind.LIGHT)
     fun tick() = play(Kind.TICK)
     fun click() = play(Kind.CLICK)
     fun heavy() = play(Kind.HEAVY)

@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 2×2 grid as weighted rows of weighted cells: RemoteViews has no GridLayout before API 31 (minSdk 29),
+     and the four cells are flat, so the nested weights cost nothing measurable here. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -54,6 +57,7 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:baselineAligned="false"
+        tools:ignore="NestedWeights"
         android:orientation="horizontal">
 
         <LinearLayout
@@ -120,6 +124,7 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:baselineAligned="false"
+        tools:ignore="NestedWeights"
         android:orientation="horizontal">
 
         <LinearLayout
