@@ -89,21 +89,51 @@ class HubApi(
     suspend fun post(path: String, body: JSONObject = JSONObject(), timeoutMs: Long = TIMEOUT_DEFAULT): HubResult =
         execute(baseUrl() + path, timeoutMs) { post(body.toString().toRequestBody(json)) }
 
-    private fun clientFor(host: String): OkHttpClient {
-        val factory = runCatching { socketFactoryFor(host) }.getOrNull() ?: return apiClient
+    /**
+     * Hosts where binding to the Wi-Fi network failed to connect. A VPN that does not allow
+     * bypassing (e.g. WireGuard "always on" into the home router) blocks sockets bound past it,
+     * while the same host is reachable through the VPN's own routes. Those hosts use default routing.
+     */
+    private val unboundHosts = ConcurrentHashMap.newKeySet<String>()
+
+    private fun boundClientFor(host: String): OkHttpClient? {
+        if (host in unboundHosts) return null
+        val factory = runCatching { socketFactoryFor(host) }.getOrNull() ?: return null
         return boundClients.getOrPut(factory) { apiClient.newBuilder().socketFactory(factory).build() }
     }
+
+    /** A failure before the connection stood: nothing was sent, so trying another route cannot double a key. */
+    private fun isConnectFailure(e: IOException): Boolean =
+        e is java.net.ConnectException || e is java.net.NoRouteToHostException ||
+            (e is java.net.SocketException && e !is javax.net.ssl.SSLException) ||
+            (e is java.net.SocketTimeoutException && e.message.orEmpty().contains("connect", ignoreCase = true))
 
     private suspend fun execute(url: String, timeoutMs: Long, method: Request.Builder.() -> Request.Builder): HubResult {
         // A malformed address from the settings (e.g. with a space) must not throw out of here.
         val request = runCatching { Request.Builder().url(url).method().build() }.getOrElse { return HubResult.Unreachable }
-        val call = runCatching { clientFor(request.url.host).newCall(request) }.getOrElse { return HubResult.Unreachable }
+        val host = request.url.host
+        val bound = boundClientFor(host)
+        val first = run(bound ?: apiClient, request, timeoutMs)
+        if (bound != null && first is Attempt.ConnectFailed) {
+            unboundHosts.add(host)
+            return run(apiClient, request, timeoutMs).result
+        }
+        return first.result
+    }
+
+    private sealed class Attempt(val result: HubResult) {
+        class Done(result: HubResult) : Attempt(result)
+        object ConnectFailed : Attempt(HubResult.Unreachable)
+    }
+
+    private suspend fun run(client: OkHttpClient, request: Request, timeoutMs: Long): Attempt {
+        val call = runCatching { client.newCall(request) }.getOrElse { return Attempt.Done(HubResult.Unreachable) }
         call.timeout().timeout(timeoutMs, TimeUnit.MILLISECONDS)
         return suspendCancellableCoroutine { cont ->
             cont.invokeOnCancellation { call.cancel() }
             call.enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
-                    cont.resume(HubResult.Unreachable)
+                    cont.resume(if (isConnectFailure(e)) Attempt.ConnectFailed else Attempt.Done(HubResult.Unreachable))
                 }
 
                 override fun onResponse(call: Call, response: Response) {
@@ -113,7 +143,7 @@ class HubApi(
                             if (resp.isSuccessful) HubResult.Ok(text) else HubResult.Rejected(resp.code, errorMessage(text, resp.code))
                         }
                     }.getOrDefault(HubResult.Unreachable)
-                    cont.resume(result)
+                    cont.resume(Attempt.Done(result))
                 }
             })
         }
