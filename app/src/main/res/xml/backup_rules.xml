@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older (android:fullBackupContent). Settings are backed up; credentials
+     (hub token, TV pairing key, in modern_lg_remote_secrets.xml) are not: with an include
+     list, everything not listed is left out. See TvPreferences. -->
+<full-backup-content>
+    <include domain="sharedpref" path="modern_lg_remote_prefs.xml" />
+</full-backup-content>

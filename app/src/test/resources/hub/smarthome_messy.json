@@ -1,0 +1,8 @@
+[
+  {"id": "lamp-1", "name": null, "type": null, "state": "ON", "brightness": "70", "color": "#GGGGGG", "kelvin": "2700", "capabilities": ["brightness", null, 5, "white"], "online": "true", "room": null},
+  {"id": "plug-1", "name": "Bett", "type": "plug", "state": true, "online": 0},
+  {"id": "", "name": "no id"},
+  {"name": "missing id"},
+  {"id": "lamp-1", "name": "duplicate"},
+  null
+]

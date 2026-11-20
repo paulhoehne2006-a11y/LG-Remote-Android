@@ -26,9 +26,39 @@ enum class TvAction(val key: String, val label: String, val shortLabel: String, 
         fun fromKey(key: String?): TvAction? = when (key) {
             null -> null
             "screen_toggle" -> SCREEN
-            "power_on", "power_off" -> POWER
+            KEY_POWER_ON, KEY_POWER_OFF -> POWER
             else -> entries.firstOrNull { it.key == key }
         }
+
+        /** Extra keys for routines: switch on / off explicitly instead of toggling. */
+        const val KEY_POWER_ON = "power_on"
+        const val KEY_POWER_OFF = "power_off"
+
+        /**
+         * true for "power_on", false for "power_off", null for every other key. A routine
+         * "TV an" must not switch an already running TV off, which plain [POWER] (a toggle) would.
+         */
+        fun explicitPower(key: String?): Boolean? = when (key) {
+            KEY_POWER_ON -> true
+            KEY_POWER_OFF -> false
+            else -> null
+        }
+
+        /**
+         * Validates an action key that arrived from outside the app (exported shortcut activity,
+         * Samsung routines, widget broadcasts). Only short lowercase keys of known actions pass;
+         * anything else (wrong type, oversized, unknown) is null.
+         */
+        fun fromExternal(value: Any?): TvAction? {
+            val key = value as? String ?: return null
+            if (key.isEmpty() || key.length > MAX_KEY_LENGTH || !key.all { it in 'a'..'z' || it == '_' }) return null
+            return fromKey(key)
+        }
+
+        private const val MAX_KEY_LENGTH = 32
+
+        /** webOS id of the PC input (HDMI 1). */
+        const val PC_INPUT_ID = "com.webos.app.hdmi1"
 
         val APP_IDS = mapOf(
             NETFLIX to "netflix",

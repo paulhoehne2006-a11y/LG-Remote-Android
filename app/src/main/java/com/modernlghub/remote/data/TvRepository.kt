@@ -1,15 +1,15 @@
 package com.modernlghub.remote.data
 
 import android.content.Context
-import android.net.ConnectivityManager
-import android.net.LinkAddress
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,15 +17,21 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
-import java.net.Inet4Address
-import java.net.InetAddress
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 data class TvState(
     val connection: Connection = Connection.CONNECTING,
@@ -48,6 +54,9 @@ data class TvState(
     val currentApp: LauncherApp? get() = apps.firstOrNull { it.id == status.currentAppId }
 
     companion object {
+        /** Display name of the TV in notifications, media session and widgets. */
+        const val TV_NAME = "LG OLED G4"
+
         private val WELL_KNOWN_TITLES = linkedMapOf(
             "hdmi1" to "PC (HDMI 1)",
             "hdmi2" to "HDMI 2",
@@ -69,100 +78,192 @@ data class TvState(
 /**
  * Single source of truth for the TV. One instance per process (see [get]).
  *
- * - Status is polled only while some UI is visible (or the live notification is on).
- * - Remote keys go through one ordered queue so fast swipes arrive in order.
- * - State changes are applied optimistically and confirmed by the next poll.
+ * Threading: every public function may be called from any thread. Fire-and-forget actions
+ * (`key`, `toggleScreen`, …) return at once and run on [scope]; suspend functions are
+ * main-safe. Shared state is either a StateFlow (updated atomically) or atomics/locks.
+ *
+ * - Status is polled only while someone holds polling ([acquirePolling]): the visible UI
+ *   (ModernLgApplication via ProcessLifecycleOwner) or the live notification (Wi-Fi only).
+ *   While the hub does not answer, the poll interval backs off ([PollPolicy]).
+ * - Concurrent [refresh] calls share one request: a caller waits for a poll that started after
+ *   it asked instead of firing another one.
+ * - Remote keys go through one ordered, bounded queue ([KeyDispatcher]): no reordering, no
+ *   pile-up on a slow network, nothing replayed late.
+ * - State changes are applied optimistically and reconciled with polls by [OptimisticState]:
+ *   a poll that was already under way can no longer flip the UI back.
  */
 class TvRepository private constructor(private val appContext: Context) {
 
     val prefs = TvPreferences(appContext)
-    val api = HubApi(baseUrl = { prefs.baseUrl }, token = { prefs.hubToken })
+
+    /** Local networks (Wi-Fi/Ethernet), also while a VPN is the default network. */
+    val lan = LanMonitor(appContext)
+
+    val api = HubApi(baseUrl = { prefs.baseUrl }, token = { prefs.hubToken }, socketFactoryFor = lan::socketFactoryFor)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val _state = MutableStateFlow(TvState())
     val state: StateFlow<TvState> = _state.asStateFlow()
 
-    private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    /** True while the phone is on a Wi-Fi/Ethernet network (where the hub can be). */
+    val lanAvailable: StateFlow<Boolean> get() = lan.available
+
+    // Never suspends the sender: a slow snackbar must not stall the key queue.
+    private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     /** Short user-facing messages (shown as snackbar). */
     val messages: SharedFlow<String> = _messages.asSharedFlow()
 
-    private val keyQueue = Channel<String>(capacity = 32)
-    private var failedPolls = 0
-    private var pollJob: Job? = null
-    private val pollClients = mutableSetOf<String>()
-    private var lastAppsLoad = 0L
+    private val optimistic = OptimisticState()
 
-    init {
-        scope.launch {
-            for (key in keyQueue) {
-                command("/api/remote/key", JSONObject().put("key", key).put("fast", true), HubApi.TIMEOUT_KEY)
-            }
-        }
-    }
+    /** Bumped by [resetConnection]; results of requests started before are discarded. */
+    private val generation = AtomicInteger()
+    private val failedPolls = AtomicInteger()
+
+    private val keys = KeyDispatcher(
+        scope = scope,
+        send = { key -> command(HubPaths.REMOTE_KEY, JSONObject().put("key", key).put("fast", true), HubApi.TIMEOUT_KEY) },
+        onSent = { key, result -> if (KeyDispatcher.isVolumeKey(key)) endVolume(result.isOk) },
+        onDropped = { key, reason ->
+            // Refused at offer() time is handled by volume() itself; a key dropped later was shown
+            // optimistically but never reached the TV, so roll back via a poll.
+            if (KeyDispatcher.isVolumeKey(key) && reason.afterQueued) endVolume(false)
+        },
+    )
 
     // ---------------------------------------------------------------- polling
 
+    private val pollLock = Any()
+    private val pollClients = HashMap<String, PollClient>()
+    private var pollJob: Job? = null
+    private val pollKick = Channel<Unit>(Channel.CONFLATED)
+
     /** Start polling on behalf of [client]; polling continues while at least one client is registered. */
-    @Synchronized
-    fun acquirePolling(client: String, intervalMs: Long = 3000L) {
-        pollClients += client
-        if (pollJob?.isActive == true) return
-        pollJob = scope.launch {
-            while (isActive) {
-                refresh()
-                val online = _state.value.isOnline
-                delay(if (online) intervalMs else intervalMs * 2)
+    fun acquirePolling(client: String, intervalMs: Long = PollPolicy.UI.intervalMs) =
+        acquirePolling(client, PollClient(intervalMs, maxOf(PollPolicy.UI.maxOfflineIntervalMs, intervalMs * 2)))
+
+    /**
+     * Registers [client] with its own interval/back-off. The loop uses the most demanding client;
+     * registering while the loop sleeps (e.g. in a long back-off) triggers a poll right away.
+     */
+    fun acquirePolling(client: String, config: PollClient) {
+        synchronized(pollLock) {
+            pollClients[client] = config
+            if (pollJob?.isActive == true) {
+                pollKick.trySend(Unit)
+                return
+            }
+            pollJob = scope.launch {
+                while (isActive) {
+                    val ok = refresh()
+                    val wait = synchronized(pollLock) {
+                        PollPolicy.nextDelay(pollClients.values.toList(), ok || _state.value.isOnline, if (ok) 0 else failedPolls.get())
+                    }
+                    withTimeoutOrNull(wait) { pollKick.receive() }
+                }
             }
         }
     }
 
-    @Synchronized
     fun releasePolling(client: String) {
-        pollClients -= client
-        if (pollClients.isEmpty()) {
-            pollJob?.cancel()
-            pollJob = null
+        synchronized(pollLock) {
+            pollClients -= client
+            if (pollClients.isEmpty()) {
+                pollJob?.cancel()
+                pollJob = null
+            }
         }
     }
 
-    /** Fetch status (and the app list if stale). Returns true if the hub answered with a status. */
+    private val refreshMutex = Mutex()
+    @Volatile private var lastPollTicket = 0L
+    @Volatile private var lastPollResult = false
+
+    /**
+     * Fetch status (and the app list if stale). Returns true if the hub answered with a status.
+     * Calls that overlap share a request: if a poll started after this call was made, its result
+     * is reused.
+     */
     suspend fun refresh(): Boolean {
-        val result = api.get("/api/status", HubApi.TIMEOUT_STATUS)
+        val asked = optimistic.tick()
+        return refreshMutex.withLock {
+            if (lastPollTicket > asked) lastPollResult else pollStatus().also { lastPollResult = it }
+        }
+    }
+
+    private suspend fun pollStatus(): Boolean {
+        val gen = generation.get()
+        val ticket = optimistic.tick()
+        lastPollTicket = ticket
+        val result = api.get(HubPaths.STATUS, HubApi.TIMEOUT_STATUS)
+        if (gen != generation.get()) return false // address/token changed meanwhile
+
         if (result is HubResult.Rejected && result.code == 401) {
             // Hub is there but wants (another) X-Hub-Token: no point in counting this as "off".
-            failedPolls = 0
+            failedPolls.set(0)
             _state.update { it.copy(connection = Connection.UNAUTHORIZED, waking = false) }
             return false
         }
         val status = (result as? HubResult.Ok)?.let { runCatching { TvStatus.parse(it.body) }.getOrNull() }
         if (status == null) {
-            failedPolls++
+            val failures = failedPolls.incrementAndGet()
             // One dropped poll on Wi-Fi is normal; only flip to offline after two.
-            if (failedPolls >= 2 || _state.value.connection != Connection.ONLINE) {
-                _state.update { it.copy(connection = Connection.OFFLINE) }
+            _state.update {
+                if (failures >= 2 || it.connection != Connection.ONLINE) it.copy(connection = Connection.OFFLINE) else it
             }
             return false
         }
-        failedPolls = 0
-        if (status.primaryMac.isNotBlank() && prefs.tvMac.isBlank()) prefs.tvMac = status.primaryMac
-        _state.update { it.copy(connection = Connection.ONLINE, status = status, waking = false) }
-        if (_state.value.apps.isEmpty() || System.currentTimeMillis() - lastAppsLoad > 10 * 60_000) loadApps()
+        failedPolls.set(0)
+        prefs.learnMacFromHub(status.primaryMac)
+        val waking = wakeJob?.isActive == true
+        _state.update {
+            it.copy(
+                connection = Connection.ONLINE,
+                status = optimistic.merge(it.status, status, ticket),
+                waking = waking && status.isStandby,
+            )
+        }
+        if (appsDue()) scope.launch { loadApps() }
         return true
     }
 
+    private val appsMutex = Mutex()
+    private val lastAppsLoad = AtomicLong(0)
+    private val lastAppsAttempt = AtomicLong(0)
+
+    private fun appsDue(): Boolean {
+        val now = monotonicMillis()
+        return if (_state.value.apps.isEmpty()) {
+            lastAppsAttempt.get() == 0L || now - lastAppsAttempt.get() > APPS_RETRY_MS
+        } else {
+            now - lastAppsLoad.get() > APPS_MAX_AGE_MS
+        }
+    }
+
+    /** Loads the launcher's app list. Concurrent calls collapse into one request. */
     suspend fun loadApps() {
-        val body = (api.get("/api/apps") as? HubResult.Ok)?.body ?: return
-        val apps = runCatching { LauncherApp.parseList(body) }.getOrNull() ?: return
-        if (apps.isNotEmpty()) {
-            lastAppsLoad = System.currentTimeMillis()
-            _state.update { it.copy(apps = apps) }
+        if (!appsMutex.tryLock()) return
+        try {
+            val gen = generation.get()
+            lastAppsAttempt.set(monotonicMillis())
+            val body = (api.get(HubPaths.APPS) as? HubResult.Ok)?.body ?: return
+            val apps = runCatching { LauncherApp.parseList(body) }.getOrNull() ?: return
+            if (apps.isNotEmpty() && gen == generation.get()) {
+                lastAppsLoad.set(monotonicMillis())
+                _state.update { it.copy(apps = apps) }
+            }
+        } finally {
+            appsMutex.unlock()
         }
     }
 
     /** Call after the hub address or token changed. */
     fun resetConnection() {
-        failedPolls = 0
-        lastAppsLoad = 0
+        generation.incrementAndGet()
+        keys.cancelPending()
+        optimistic.clear()
+        failedPolls.set(0)
+        lastAppsLoad.set(0)
+        lastAppsAttempt.set(0)
         _state.value = TvState()
         scope.launch { refresh() }
     }
@@ -174,14 +275,14 @@ class TvRepository private constructor(private val appContext: Context) {
         }
     }
 
-    private var lastFailureMessage = 0L
+    private val lastFailureMessage = AtomicLong(Long.MIN_VALUE / 2)
 
     /** At most one snackbar every few seconds, so a burst of failing keys doesn't spam. */
-    private suspend fun notify(message: String) {
-        val now = System.currentTimeMillis()
-        if (now - lastFailureMessage > 4000) {
-            lastFailureMessage = now
-            _messages.emit(message)
+    private fun notify(message: String) {
+        val now = monotonicMillis()
+        val last = lastFailureMessage.get()
+        if (now - last > 4000 && lastFailureMessage.compareAndSet(last, now)) {
+            _messages.tryEmit(message)
         }
     }
 
@@ -190,11 +291,13 @@ class TvRepository private constructor(private val appContext: Context) {
      * "hub answered with an error" (e.g. 502 when the TV refused a quick action).
      */
     private suspend fun command(path: String, body: JSONObject = JSONObject(), timeoutMs: Long = HubApi.TIMEOUT_DEFAULT): HubResult {
+        val gen = generation.get()
         val result = api.post(path, body, timeoutMs)
+        if (gen != generation.get()) return result
         when (result) {
             is HubResult.Ok -> Unit
             is HubResult.Unreachable -> if (_state.value.isOnline) {
-                failedPolls++
+                failedPolls.incrementAndGet()
                 notify("Hub antwortet nicht")
                 refreshSoon(0)
             }
@@ -212,20 +315,51 @@ class TvRepository private constructor(private val appContext: Context) {
 
     // ---------------------------------------------------------------- remote keys
 
-    /** Queue a webOS special key (UP, DOWN, ENTER, BACK, HOME, PLAY, …). Never blocks. */
+    /**
+     * Queue a webOS special key (UP, DOWN, ENTER, BACK, HOME, PLAY, …). Never blocks.
+     * Repeats that the network can't keep up with are dropped (see [KeyDispatcher]).
+     */
     fun key(name: String) {
-        keyQueue.trySend(name)
+        val k = name.trim()
+        if (k.isNotEmpty()) keys.offer(k)
+    }
+
+    /**
+     * Drops keys that are queued but not sent yet. Call when a hold-to-repeat ends (finger lifted)
+     * so nothing keeps moving afterwards.
+     */
+    fun cancelPendingKeys() {
+        keys.cancelPending()
     }
 
     fun volumeUp() = volume(+1)
     fun volumeDown() = volume(-1)
 
+    /** Changes the volume by [steps] (positive = louder), e.g. from the system volume slider. */
+    fun adjustVolume(steps: Int) {
+        repeat(kotlin.math.abs(steps).coerceAtMost(MAX_VOLUME_STEPS)) { volume(if (steps > 0) +1 else -1) }
+    }
+
+    /** Volume steps go through the key queue as VOLUMEUP/VOLUMEDOWN, so they stay ordered and bounded. */
     private fun volume(delta: Int) {
+        // Hold before offering: the key may be sent (and finish) before offer() even returns.
+        optimistic.begin(OptimisticState.Field.VOLUME)
+        optimistic.begin(OptimisticState.Field.MUTE)
+        if (!keys.offer(if (delta > 0) "VOLUMEUP" else "VOLUMEDOWN")) {
+            optimistic.abandon(OptimisticState.Field.VOLUME)
+            optimistic.abandon(OptimisticState.Field.MUTE)
+            return
+        }
         _state.update {
             val a = it.status.audio
             it.copy(status = it.status.copy(audio = a.copy(volume = (a.volume + delta).coerceIn(0, 100), muted = false)))
         }
-        quick(if (delta > 0) "vol_up" else "vol_down", refresh = false)
+    }
+
+    private fun endVolume(ok: Boolean) {
+        optimistic.end(OptimisticState.Field.VOLUME, ok)
+        optimistic.end(OptimisticState.Field.MUTE, ok)
+        if (!ok) refreshSoon(0)
     }
 
     fun toggleMute() {
@@ -233,52 +367,64 @@ class TvRepository private constructor(private val appContext: Context) {
             val a = it.status.audio
             it.copy(status = it.status.copy(audio = a.copy(muted = !a.muted)))
         }
-        quick("mute")
+        quick("mute", OptimisticState.Field.MUTE)
     }
 
     // ---------------------------------------------------------------- actions
 
-    private fun quick(action: String, refresh: Boolean = true) {
+    /** Runs a quick action; [fields] are held optimistically until the TV confirms them. */
+    private fun quick(action: String, vararg fields: OptimisticState.Field) {
+        fields.forEach(optimistic::begin)
         scope.launch {
-            val res = command("/api/quick", JSONObject().put("action", action))
+            val res = command(HubPaths.QUICK, JSONObject().put("action", action))
+            fields.forEach { optimistic.end(it, res.isOk) }
             // On a refusal, fetch the real state at once so optimistic changes are rolled back.
-            if (!res.isOk) refreshSoon(0) else if (refresh) refreshSoon()
+            refreshSoon(if (res.isOk) 700 else 0)
         }
     }
 
     fun toggleScreen() {
         _state.update { it.copy(status = it.status.copy(screenOff = !it.status.screenOff)) }
-        quick("screen_toggle")
+        quick("screen_toggle", OptimisticState.Field.SCREEN)
     }
 
-    fun switchToPc() = launch("com.webos.app.hdmi1")
+    fun switchToPc() = launch(TvAction.PC_INPUT_ID)
 
     fun goHome() = quick("home")
 
     fun launch(appId: String) {
+        if (appId.isBlank()) return
+        optimistic.begin(OptimisticState.Field.APP)
+        optimistic.begin(OptimisticState.Field.SCREEN)
         _state.update { it.copy(status = it.status.copy(currentAppId = appId, screenOff = false)) }
         scope.launch {
-            command("/api/launch", JSONObject().put("id", appId))
-            refreshSoon(1200)
+            val res = command(HubPaths.LAUNCH, JSONObject().put("id", appId))
+            optimistic.end(OptimisticState.Field.APP, res.isOk)
+            optimistic.end(OptimisticState.Field.SCREEN, res.isOk)
+            refreshSoon(if (res.isOk) 1200 else 0)
         }
     }
 
     fun setPictureMode(mode: PictureMode) {
         scope.launch {
-            val res = command("/api/picture/mode", JSONObject().put("mode", mode.key))
+            val res = command(HubPaths.PICTURE_MODE, JSONObject().put("mode", mode.key))
             if (res is HubResult.Ok) {
-                _messages.emit(
-                    if (res.json().optBoolean("success", true)) "Bildmodus: ${mode.label}" else "Bildmodus wurde vom TV abgelehnt"
+                _messages.tryEmit(
+                    if (res.json().bool("success", true)) "Bildmodus: ${mode.label}" else "Bildmodus wurde vom TV abgelehnt"
                 )
             }
         }
     }
 
     fun setSoundOutput(output: SoundOutput) {
+        optimistic.begin(OptimisticState.Field.OUTPUT)
         _state.update { it.copy(status = it.status.copy(audio = it.status.audio.copy(soundOutput = output.key))) }
         scope.launch {
-            command("/api/audio/output", JSONObject().put("output", output.key))
-            refreshSoon()
+            val res = command(HubPaths.AUDIO_OUTPUT, JSONObject().put("output", output.key))
+            // The hub answers 200 with success=false when the TV refused the output.
+            val ok = res is HubResult.Ok && res.json().bool("success", true)
+            optimistic.end(OptimisticState.Field.OUTPUT, ok)
+            refreshSoon(if (ok) 700 else 0)
         }
     }
 
@@ -293,47 +439,67 @@ class TvRepository private constructor(private val appContext: Context) {
     }
 
     fun powerOff() {
+        keys.cancelPending()
         _state.update { it.copy(status = it.status.copy(power = "Power Off")) }
-        quick("power_off")
+        quick("power_off", OptimisticState.Field.POWER)
     }
 
+    private val wakeLock = Any()
+    @Volatile private var wakeJob: Job? = null
+
+    /**
+     * Wake-on-LAN plus "screen on" for active standby, then polls quickly for ~25 s. Pressing it
+     * again while a wake is running only re-sends the packet.
+     */
     fun wake() {
-        scope.launch {
-            _state.update { it.copy(waking = true) }
-            val sent = sendWakeOnLan()
-            if (!sent) {
-                _state.update { it.copy(waking = false) }
-                _messages.emit("Keine MAC-Adresse bekannt – bitte in den Einstellungen eintragen")
-                return@launch
+        synchronized(wakeLock) {
+            if (wakeJob?.isActive == true) {
+                scope.launch { sendWakeOnLan() }
+                return
             }
-            // TV may already run the hub in active standby: also turn the panel on (silently).
-            api.post("/api/quick", JSONObject().put("action", "screen_on"), HubApi.TIMEOUT_KEY)
-            // Poll faster for ~25 s so the UI flips to "on" as soon as the hub is up.
-            repeat(12) {
-                delay(2000)
-                if (refresh() && !_state.value.status.isStandby) return@launch
+            wakeJob = scope.launch {
+                _state.update { it.copy(waking = true) }
+                try {
+                    if (!sendWakeOnLan()) {
+                        _messages.tryEmit(
+                            if (WakeOnLan.magicPacket(prefs.tvMac) == null) "Keine MAC-Adresse bekannt – bitte in den Einstellungen eintragen"
+                            else "Einschalt-Paket konnte nicht gesendet werden (WLAN?)"
+                        )
+                        return@launch
+                    }
+                    // TV may already run the hub in active standby: also turn the panel on (silently).
+                    api.post(HubPaths.QUICK, JSONObject().put("action", "screen_on"), HubApi.TIMEOUT_KEY)
+                    // Poll faster for ~25 s so the UI flips to "on" as soon as the hub is up.
+                    // Magic packets are fire-and-forget UDP: repeat them while the TV is not up yet.
+                    for (attempt in 1..WAKE_POLLS) {
+                        delay(WAKE_POLL_MS)
+                        if (refresh() && !_state.value.status.isStandby) return@launch
+                        if (attempt in WAKE_RESEND_AT) sendWakeOnLan()
+                    }
+                } finally {
+                    _state.update { it.copy(waking = false) }
+                }
             }
-            _state.update { it.copy(waking = false) }
         }
     }
 
     // ---------------------------------------------------------------- text input
 
     fun sendText(text: String) {
-        scope.launch { command("/api/remote/text", JSONObject().put("text", text).put("replace", true)) }
+        scope.launch { command(HubPaths.REMOTE_TEXT, JSONObject().put("text", text).put("replace", true)) }
     }
 
     fun sendEnter() {
-        scope.launch { command("/api/remote/enter") }
+        scope.launch { command(HubPaths.REMOTE_ENTER) }
     }
 
     // ---------------------------------------------------------------- smart home & assistant
 
     /** Lamps and plugs from the hub's local smart-home control; null if the hub can't be read. */
     suspend fun smartDevices(): List<SmartDevice>? {
-        var res = api.get("/api/smarthome/devices", HubApi.TIMEOUT_SMARTTHINGS)
+        var res = api.get(HubPaths.SMARTHOME_DEVICES, HubApi.TIMEOUT_SMARTHOME)
         // Hubs before the local smart-home control only know the old SmartThings path.
-        if (res is HubResult.Rejected && res.code == 404) res = api.get("/api/smartthings/devices", HubApi.TIMEOUT_SMARTTHINGS)
+        if (res is HubResult.Rejected && res.code == 404) res = api.get(HubPaths.LEGACY_SMARTTHINGS_DEVICES, HubApi.TIMEOUT_SMARTHOME)
         val body = (res as? HubResult.Ok)?.body ?: return null
         return runCatching { SmartDevice.parseList(body) }.getOrNull()
     }
@@ -341,11 +507,11 @@ class TvRepository private constructor(private val appContext: Context) {
     /** Toggle a lamp or plug; returns the new on-state, or null on failure. */
     suspend fun toggleDevice(id: String): Boolean? {
         val body = JSONObject().put("deviceId", id)
-        var res = api.post("/api/smarthome/toggle", body, HubApi.TIMEOUT_SMARTTHINGS)
-        if (res is HubResult.Rejected && res.code == 404) res = api.post("/api/smartthings/toggle", body, HubApi.TIMEOUT_SMARTTHINGS)
+        var res = api.post(HubPaths.SMARTHOME_TOGGLE, body, HubApi.TIMEOUT_SMARTHOME)
+        if (res is HubResult.Rejected && res.code == 404) res = api.post(HubPaths.LEGACY_SMARTTHINGS_TOGGLE, body, HubApi.TIMEOUT_SMARTHOME)
         val json = smartHomeResult(res) ?: return null
-        val state = json.optString("new_state", json.optString("state", ""))
-        return if (state.isBlank()) null else state == "on"
+        val state = json.str("new_state").ifBlank { json.str("state") }.trim()
+        return if (state.isBlank()) null else state.equals("on", ignoreCase = true)
     }
 
     /**
@@ -363,7 +529,7 @@ class TvRepository private constructor(private val appContext: Context) {
         brightness?.let { body.put("brightness", it.coerceIn(10, 100)) }
         color?.let { body.put("color", it) }
         kelvin?.let { body.put("kelvin", it.coerceIn(SmartDevice.KELVIN_MIN, SmartDevice.KELVIN_MAX)) }
-        val res = api.post("/api/smarthome/set", body, HubApi.TIMEOUT_SMARTTHINGS)
+        val res = api.post(HubPaths.SMARTHOME_SET, body, HubApi.TIMEOUT_SMARTHOME)
         if (res is HubResult.Rejected && res.code == 404) {
             notify("Hub zu alt für Helligkeit/Farbe – bitte Hub aktualisieren")
             return false
@@ -372,7 +538,7 @@ class TvRepository private constructor(private val appContext: Context) {
     }
 
     /** The hub's JSON answer, or null (with a message) when it failed. */
-    private suspend fun smartHomeResult(res: HubResult): JSONObject? {
+    private fun smartHomeResult(res: HubResult): JSONObject? {
         if (res !is HubResult.Ok) {
             notify(
                 when {
@@ -383,13 +549,13 @@ class TvRepository private constructor(private val appContext: Context) {
             )
             return null
         }
-        val json = runCatching { res.json() }.getOrNull()
+        val json = parseObjectOrNull(res.body)
         if (json == null) {
             notify("Zuhause: unerwartete Antwort")
             return null
         }
-        if (json.optString("status") == "error") {
-            notify("Zuhause: ${json.optString("error", "Fehler")}")
+        if (json.str("status") == "error" || json.opt("success") == false) {
+            notify("Zuhause: ${json.str("error").ifBlank { "Fehler" }}")
             return null
         }
         return json
@@ -403,7 +569,7 @@ class TvRepository private constructor(private val appContext: Context) {
         val body = JSONObject()
             .put("prompt", prompt)
             .put("history", AssistantTurn.toJson(history.takeLast(MAX_HISTORY_TURNS)))
-        val reply = when (val res = api.post("/api/command", body, HubApi.TIMEOUT_ASSISTANT)) {
+        val reply = when (val res = api.post(HubPaths.ASSISTANT, body, HubApi.TIMEOUT_ASSISTANT)) {
             is HubResult.Ok -> runCatching { AssistantReply.parse(res.body) }
                 .getOrElse { AssistantReply("Antwort konnte nicht gelesen werden.", isError = true) }
             is HubResult.Rejected -> AssistantReply(res.message, isError = true)
@@ -416,62 +582,75 @@ class TvRepository private constructor(private val appContext: Context) {
 
     /** Returns null on success, otherwise a message for the user. */
     suspend fun saveGeminiKey(key: String): String? =
-        when (val res = api.post("/api/key", JSONObject().put("api_key", key.trim()))) {
-            is HubResult.Ok -> if (res.json().optBoolean("success", true)) null else "Schlüssel wurde nicht gespeichert"
+        when (val res = api.post(HubPaths.GEMINI_KEY, JSONObject().put("api_key", key.trim()))) {
+            is HubResult.Ok -> if (res.json().bool("success", true)) null else "Schlüssel wurde nicht gespeichert"
             is HubResult.Rejected -> res.message
             HubResult.Unreachable -> "Hub nicht erreichbar"
         }
 
     // ---------------------------------------------------------------- Wake-on-LAN & discovery
 
+    /**
+     * Sends magic packets on every local network (bound to it, so a VPN can't swallow them):
+     * directed broadcast, 255.255.255.255 and the TV's last address. Returns false without a
+     * valid MAC or if nothing could be sent.
+     */
     suspend fun sendWakeOnLan(mac: String = prefs.tvMac): Boolean = withContext(Dispatchers.IO) {
         val packet = WakeOnLan.magicPacket(mac) ?: return@withContext false
-        val targets = buildSet {
-            add("255.255.255.255")
-            localIpv4()?.let { add(WakeOnLan.broadcastAddress(it.address.hostAddress ?: "", it.prefixLength)) }
-            prefs.tvHost.takeIf { it.isNotBlank() }?.let { add(it) }
-        }.filter { it.isNotBlank() }
-        WakeOnLan.send(packet, targets)
-    }
-
-    private fun localIpv4(): LinkAddress? {
-        val cm = appContext.getSystemService(ConnectivityManager::class.java) ?: return null
-        val props = cm.getLinkProperties(cm.activeNetwork) ?: return null
-        return props.linkAddresses.firstOrNull { it.address is Inet4Address && !it.address.isLoopbackAddress }
+        lan.awaitSettled()
+        val host = prefs.tvHost
+        val byNetwork = lan.addressesByNetwork()
+        if (byNetwork.isEmpty()) return@withContext WakeOnLan.send(packet, WakeOnLan.targets(emptyList(), host))
+        var any = false
+        for ((network, addresses) in byNetwork) {
+            any = WakeOnLan.send(packet, WakeOnLan.targets(addresses, host)) { network.bindSocket(it) } || any
+        }
+        any
     }
 
     /**
-     * Scan the local /24 for a Modern-LG-Hub on port 8080.
-     * Returns the host (IP) or null. Takes ~2 s on a typical home network.
+     * Scans the local /24 network(s) for a Modern-LG-Hub on port 8080 and returns its IP, or null.
+     * The remembered address is tried first; the scan stops at the first hub found.
+     * Takes ~2-5 s on a typical home network; returns null at once without Wi-Fi.
      */
     suspend fun discoverHub(): String? = withContext(Dispatchers.IO) {
-        val own = localIpv4()?.address?.hostAddress ?: return@withContext null
-        val prefix = own.substringBeforeLast('.')
-        val gate = Semaphore(48)
-        val candidates = (1..254).map { "$prefix.$it" }.filter { it != own }
-        // Try the remembered address first.
-        val ordered = listOf(prefs.tvHost).filter { it in candidates } + candidates
-        val results = ordered.map { host ->
-            async {
-                gate.withPermit {
-                    host.takeIf { isHubAnswer(api.get("/api", 900, base = "http://$host:${HubApi.DEFAULT_PORT}")) }
-                }
+        lan.awaitSettled()
+        val local = lan.addresses()
+        val remembered = prefs.tvHost
+        suspend fun probe(host: String) =
+            isHubAnswer(api.get(HubPaths.INFO, DISCOVERY_TIMEOUT_MS, base = "http://$host:${HubApi.DEFAULT_PORT}"))
+
+        if (Ipv4.parse(remembered) != null && local.any { it.contains(remembered) } && probe(remembered)) {
+            return@withContext remembered
+        }
+        val candidates = Ipv4.scanCandidates(local, preferred = null) - remembered
+        if (candidates.isEmpty()) return@withContext null
+        coroutineScope {
+            val found = CompletableDeferred<String?>()
+            val gate = Semaphore(DISCOVERY_PARALLELISM)
+            val probes = candidates.map { host ->
+                launch { gate.withPermit { if (!found.isCompleted && probe(host)) found.complete(host) } }
             }
-        }.awaitAll()
-        results.firstOrNull { it != null }
+            launch {
+                probes.joinAll()
+                found.complete(null)
+            }
+            found.await().also { coroutineContext.cancelChildren() }
+        }
     }
 
     // ---------------------------------------------------------------- one-tap actions
 
     /**
      * Execute a widget / shortcut / routine / notification action and *wait* for the hub,
-     * so callers like a BroadcastReceiver (goAsync) or a finishing Activity don't lose it.
+     * so callers like a BroadcastReceiver (goAsync) don't lose it.
      * Returns false if the hub could not be reached or refused. UI actions ([TvAction.opensUi]) are no-ops.
      */
     suspend fun perform(action: TvAction): Boolean {
-        suspend fun quickNow(name: String) = api.post("/api/quick", JSONObject().put("action", name)).isOk
-        suspend fun launchNow(id: String) = api.post("/api/launch", JSONObject().put("id", id)).isOk
+        suspend fun quickNow(name: String) = api.post(HubPaths.QUICK, JSONObject().put("action", name)).isOk
+        suspend fun launchNow(id: String) = api.post(HubPaths.LAUNCH, JSONObject().put("id", id)).isOk
 
+        lan.awaitSettled()
         val ok = when (action) {
             TvAction.POWER -> {
                 // No live state here (widget, routine): ask the hub first.
@@ -479,18 +658,63 @@ class TvRepository private constructor(private val appContext: Context) {
                     quickNow("power_off")
                 } else {
                     val sent = sendWakeOnLan()
-                    api.post("/api/quick", JSONObject().put("action", "screen_on"), HubApi.TIMEOUT_KEY)
+                    api.post(HubPaths.QUICK, JSONObject().put("action", "screen_on"), HubApi.TIMEOUT_KEY)
                     sent
                 }
             }
             TvAction.SCREEN -> quickNow("screen_toggle")
-            TvAction.PC -> launchNow("com.webos.app.hdmi1")
-            TvAction.AUDIO -> api.post("/api/audio/toggle").isOk
+            TvAction.PC -> launchNow(TvAction.PC_INPUT_ID)
+            TvAction.AUDIO -> api.post(HubPaths.AUDIO_TOGGLE).let { it is HubResult.Ok && it.json().bool("success", true) }
             TvAction.MUTE -> quickNow("mute")
-            TvAction.PLAY_PAUSE -> api.post("/api/remote/key", JSONObject().put("key", "PLAY")).isOk
+            TvAction.PLAY_PAUSE -> api.post(HubPaths.REMOTE_KEY, JSONObject().put("key", "PLAY"), HubApi.TIMEOUT_KEY).isOk
             TvAction.HOME -> quickNow("home")
             TvAction.NETFLIX, TvAction.YOUTUBE, TvAction.SPOTIFY -> launchNow(TvAction.APP_IDS.getValue(action))
             TvAction.REMOTE -> true
+        }
+        if (action != TvAction.REMOTE) {
+            if (ok) delay(600)
+            refresh()
+        }
+        return ok
+    }
+
+    // After all properties: everything it touches must be initialised before the coroutine runs.
+    init {
+        // Back on Wi-Fi: poll at once. Off Wi-Fi: the hub cannot be reached, don't show stale state.
+        scope.launch {
+            lan.available.drop(1).distinctUntilChanged().collect { available ->
+                if (available) {
+                    pollKick.trySend(Unit)
+                } else {
+                    failedPolls.set(0)
+                    _state.update { if (it.connection == Connection.ONLINE) it.copy(connection = Connection.OFFLINE, waking = false) else it }
+                }
+            }
+        }
+    }
+
+    /**
+     * Switch on or off explicitly (routines "power_on" / "power_off"): no toggle, so running it
+     * twice or with stale state never does the opposite. Waits for the hub like [perform].
+     */
+    suspend fun setPower(on: Boolean): Boolean {
+        lan.awaitSettled()
+        val ok = if (on) {
+            // Already on: nothing to do (but make sure the panel is lit).
+            if (refresh() && !_state.value.status.isStandby) {
+                api.post(HubPaths.QUICK, JSONObject().put("action", "screen_on"), HubApi.TIMEOUT_KEY)
+                true
+            } else {
+                val sent = sendWakeOnLan()
+                api.post(HubPaths.QUICK, JSONObject().put("action", "screen_on"), HubApi.TIMEOUT_KEY)
+                sent
+            }
+        } else {
+            // Unreachable hub = TV already off: that counts as done.
+            when (api.post(HubPaths.QUICK, JSONObject().put("action", "power_off"))) {
+                is HubResult.Ok, HubResult.Unreachable -> true
+                is HubResult.Rejected -> false
+            }
         }
         if (ok) delay(600)
         refresh()
@@ -503,7 +727,16 @@ class TvRepository private constructor(private val appContext: Context) {
         /** The hub keeps more itself; a short tail is enough for follow-up questions. */
         const val MAX_HISTORY_TURNS = 10
 
-        /** "/api" answered by a Modern-LG-Hub, or 401 because it wants a token (still our hub). */
+        private const val MAX_VOLUME_STEPS = 10
+        private const val APPS_MAX_AGE_MS = 10 * 60_000L
+        private const val APPS_RETRY_MS = 30_000L
+        private const val WAKE_POLLS = 12
+        private const val WAKE_POLL_MS = 2_000L
+        private val WAKE_RESEND_AT = setOf(1, 3)
+        private const val DISCOVERY_TIMEOUT_MS = 900L
+        private const val DISCOVERY_PARALLELISM = 48
+
+        /** HubPaths.INFO answered by a Modern-LG-Hub, or 401 because it wants a token (still our hub). */
         fun isHubAnswer(result: HubResult): Boolean = when (result) {
             is HubResult.Ok -> result.body.contains("LG Hub", ignoreCase = true)
             is HubResult.Rejected -> result.code == 401 && result.message.contains("X-Hub-Token")
@@ -514,46 +747,5 @@ class TvRepository private constructor(private val appContext: Context) {
             instance ?: synchronized(this) {
                 instance ?: TvRepository(context.applicationContext).also { instance = it }
             }
-    }
-}
-
-/** Builds and sends Wake-on-LAN magic packets. Pure functions are unit-tested. */
-object WakeOnLan {
-    fun magicPacket(mac: String): ByteArray? {
-        val hex = mac.filter { it.isLetterOrDigit() }
-        if (hex.length != 12 || !hex.all { it in '0'..'9' || it.lowercaseChar() in 'a'..'f' }) return null
-        val macBytes = ByteArray(6) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
-        return ByteArray(6 + 16 * 6).also { p ->
-            for (i in 0 until 6) p[i] = 0xFF.toByte()
-            for (r in 0 until 16) System.arraycopy(macBytes, 0, p, 6 + r * 6, 6)
-        }
-    }
-
-    fun broadcastAddress(ip: String, prefixLength: Int): String {
-        val parts = ip.split('.').mapNotNull { it.toIntOrNull() }
-        if (parts.size != 4 || prefixLength !in 0..32) return ""
-        val addr = parts.fold(0L) { acc, b -> (acc shl 8) or b.toLong() }
-        val mask = if (prefixLength == 0) 0L else (0xFFFFFFFFL shl (32 - prefixLength)) and 0xFFFFFFFFL
-        val bc = (addr and mask) or (mask.inv() and 0xFFFFFFFFL)
-        return (3 downTo 0).joinToString(".") { ((bc shr (it * 8)) and 0xFF).toString() }
-    }
-
-    fun send(packet: ByteArray, hosts: List<String>): Boolean {
-        var anySent = false
-        runCatching {
-            java.net.DatagramSocket().use { socket ->
-                socket.broadcast = true
-                for (host in hosts) {
-                    runCatching {
-                        val addr = InetAddress.getByName(host)
-                        for (port in intArrayOf(9, 7)) {
-                            socket.send(java.net.DatagramPacket(packet, packet.size, addr, port))
-                        }
-                        anySent = true
-                    }
-                }
-            }
-        }
-        return anySent
     }
 }

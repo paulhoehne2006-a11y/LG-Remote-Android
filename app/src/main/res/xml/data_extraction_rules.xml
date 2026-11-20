@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ (android:dataExtractionRules). Settings go to the cloud backup and to a new phone;
+     credentials (hub token, TV pairing key, in modern_lg_remote_secrets.xml) never leave this
+     device: with an include list, everything not listed is left out. See TvPreferences. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="sharedpref" path="modern_lg_remote_prefs.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="modern_lg_remote_prefs.xml" />
+    </device-transfer>
+</data-extraction-rules>

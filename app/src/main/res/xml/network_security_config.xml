@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The hub on the TV speaks plain HTTP on the local network (port 8080). -->
+<!-- The hub on the TV speaks plain HTTP on the local network (port 8080). Its address is entered
+     by the user (any LAN IP or host name), and network security config cannot express IP ranges,
+     so cleartext has to stay allowed app-wide. The app only ever talks to that hub and to the TV
+     itself; there are no other HTTP endpoints. -->
 <network-security-config xmlns:tools="http://schemas.android.com/tools">
     <base-config cleartextTrafficPermitted="true" tools:ignore="InsecureBaseConfiguration">
         <trust-anchors>

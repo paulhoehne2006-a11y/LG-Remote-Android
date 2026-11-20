@@ -9,6 +9,11 @@ on:
 permissions:
   contents: write
 
+# A newer push to the same branch supersedes a running build.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Test & build APK
@@ -26,6 +31,15 @@ jobs:
 
       - name: Unit tests & lint
         run: ./gradlew testDebugUnitTest lintDebug --stacktrace
+
+      - name: Upload test and lint reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-debug.html
 
       - name: Build release APK
         run: ./gradlew assembleRelease --stacktrace

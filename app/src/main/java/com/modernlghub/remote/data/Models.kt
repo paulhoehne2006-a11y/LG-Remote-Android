@@ -60,23 +60,27 @@ data class TvStatus(
         }
 
     companion object {
+        /**
+         * Parses `/api/status`. Throws if the body is not a JSON object with a `tv` object
+         * (e.g. an HTML error page from something else on port 8080); every field inside is optional.
+         */
         fun parse(body: String): TvStatus {
             val root = JSONObject(body)
-            val tv = root.optJSONObject("tv") ?: JSONObject()
-            val audio = tv.optJSONObject("audio") ?: JSONObject()
-            val net = tv.optJSONObject("network") ?: JSONObject()
-            val app = tv.optString("current_app", "")
+            val tv = root.optJSONObject("tv") ?: throw IllegalArgumentException("status without \"tv\" object")
+            val audio = tv.obj("audio")
+            val net = tv.obj("network")
+            val app = tv.str("current_app").trim()
             return TvStatus(
-                power = tv.optString("power", ""),
-                screenOff = tv.optBoolean("screen_off", false),
-                currentAppId = if (app == "Unknown") "" else app,
+                power = tv.str("power").trim(),
+                screenOff = tv.bool("screen_off"),
+                currentAppId = if (app.equals("Unknown", ignoreCase = true) || app == "null") "" else app,
                 audio = AudioStatus(
-                    soundOutput = audio.optString("soundOutput", ""),
-                    volume = audio.optInt("volume", 0),
-                    muted = audio.optBoolean("muted", false),
+                    soundOutput = audio.str("soundOutput").trim(),
+                    volume = (audio.intOrNull("volume") ?: 0).coerceIn(0, 100),
+                    muted = audio.bool("muted"),
                 ),
-                primaryMac = net.optString("primary_mac", ""),
-                hasGeminiKey = root.optBoolean("has_key", false),
+                primaryMac = net.str("primary_mac").trim(),
+                hasGeminiKey = root.bool("has_key"),
             )
         }
     }
@@ -95,23 +99,25 @@ data class LauncherApp(
     companion object {
         fun parseList(body: String): List<LauncherApp> {
             val arr = JSONObject(body).optJSONArray("apps") ?: JSONArray()
+            val seen = HashSet<String>()
             return (0 until arr.length()).mapNotNull { i ->
                 val o = arr.optJSONObject(i) ?: return@mapNotNull null
-                val id = o.optString("id")
-                if (id.isBlank()) return@mapNotNull null
+                val id = o.str("id").trim()
+                // Blank or duplicate ids would break list keys in the UI.
+                if (id.isBlank() || !seen.add(id)) return@mapNotNull null
                 LauncherApp(
                     id = id,
-                    title = o.optString("title", id).ifBlank { id },
-                    type = o.optString("type", "app"),
-                    visible = o.optBoolean("visible", true),
-                    brandColor = parseColor(o.optString("iconColor", "")),
-                    usage = o.optDouble("usage", 0.0).let { if (it.isNaN()) 0.0 else it },
+                    title = o.str("title").trim().ifBlank { id },
+                    type = o.str("type", "app").ifBlank { "app" },
+                    visible = o.bool("visible", true),
+                    brandColor = parseColor(o.str("iconColor")),
+                    usage = o.doubleOrNull("usage") ?: 0.0,
                 )
             }
         }
 
         private fun parseColor(hex: String): Long? {
-            val clean = hex.removePrefix("#")
+            val clean = hex.trim().removePrefix("#")
             if (clean.length != 6) return null
             return clean.toLongOrNull(16)?.let { 0xFF000000 or it }
         }
@@ -156,27 +162,31 @@ data class SmartDevice(
         const val KELVIN_MAX = 6500
 
         fun parseList(body: String): List<SmartDevice> {
-            val arr = JSONArray(body)
+            // The hub answers a JSON array; tolerate {"devices": [...]} as well.
+            val arr = runCatching { JSONArray(body) }.getOrNull()
+                ?: JSONObject(body).optJSONArray("devices")
+                ?: JSONArray()
+            val seen = HashSet<String>()
             return (0 until arr.length()).mapNotNull { i ->
                 val o = arr.optJSONObject(i) ?: return@mapNotNull null
-                val id = o.optString("id")
-                if (id.isBlank()) return@mapNotNull null
-                val type = o.optString("type", "light")
-                val brightness = o.optIntOrNull("brightness")?.coerceIn(0, 100)
+                val id = o.str("id").trim()
+                if (id.isBlank() || !seen.add(id)) return@mapNotNull null
+                val type = o.str("type", "light").ifBlank { "light" }
+                val brightness = o.intOrNull("brightness")?.coerceIn(0, 100)
                 val caps = o.optJSONArray("capabilities")
-                    ?.let { a -> (0 until a.length()).map { a.optString(it) }.toSet() }
+                    ?.let { a -> (0 until a.length()).mapNotNull { a.opt(it) as? String }.toSet() }
                     // Older hubs don't list capabilities: a lamp reporting brightness can at least be dimmed.
                     ?: if (type != "plug" && brightness != null) setOf(CAP_BRIGHTNESS) else emptySet()
                 SmartDevice(
                     id = id,
-                    name = o.optString("name").ifBlank { id },
+                    name = o.str("name").trim().ifBlank { id },
                     type = type,
-                    isOn = o.optString("state", "off").equals("on", ignoreCase = true),
-                    online = o.optBoolean("online", true),
-                    room = o.optString("room").trim(),
+                    isOn = o.str("state", "off").trim().equals("on", ignoreCase = true) || o.opt("state") == true,
+                    online = o.bool("online", true),
+                    room = o.str("room").trim(),
                     brightness = brightness,
-                    color = o.optString("color").takeIf { parseHexColor(it) != null },
-                    kelvin = o.optIntOrNull("kelvin")?.takeIf { it > 0 },
+                    color = o.str("color").trim().takeIf { parseHexColor(it) != null },
+                    kelvin = o.intOrNull("kelvin")?.takeIf { it > 0 },
                     capabilities = caps,
                 )
             }
@@ -208,9 +218,6 @@ data class SmartDevice(
     }
 }
 
-private fun JSONObject.optIntOrNull(key: String): Int? =
-    if (!has(key) || isNull(key)) null else (opt(key) as? Number)?.toInt()
-
 data class AssistantReply(
     val text: String,
     val actions: List<String> = emptyList(),
@@ -223,17 +230,25 @@ data class AssistantReply(
     companion object {
         fun parse(body: String): AssistantReply {
             val o = JSONObject(body)
-            val text = o.optString("text").ifBlank { o.optString("reply").ifBlank { o.optString("response") } }
+            val text = o.str("text").ifBlank { o.str("reply").ifBlank { o.str("response") } }.trim()
             val arr = o.optJSONArray("actions") ?: JSONArray()
-            val actions = (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optString("tool") }
-                .filter { it.isNotBlank() }
+            // Actions are {"tool": ...} objects; a bare string is accepted too.
+            val actions = (0 until arr.length()).mapNotNull {
+                when (val a = arr.opt(it)) {
+                    is JSONObject -> a.str("tool")
+                    is String -> a
+                    else -> null
+                }?.trim()?.takeIf { t -> t.isNotEmpty() }
+            }
             val sug = o.optJSONArray("suggestions") ?: JSONArray()
-            val suggestions = (0 until sug.length()).mapNotNull { sug.optString(it).trim().takeIf { s -> s.isNotEmpty() } }.take(3)
+            val suggestions = (0 until sug.length())
+                .mapNotNull { (sug.opt(it) as? String)?.trim()?.takeIf { s -> s.isNotEmpty() } }
+                .take(3)
             return AssistantReply(
                 text = text.ifBlank { "Erledigt." },
                 actions = actions,
                 suggestions = suggestions,
-                needsKey = o.optBoolean("needs_key", false),
+                needsKey = o.bool("needs_key"),
             )
         }
     }

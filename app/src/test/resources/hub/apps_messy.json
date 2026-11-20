@@ -1,0 +1,9 @@
+{"apps": [
+  {"id": "netflix", "title": null, "type": null, "visible": "false", "iconColor": "ffffff", "usage": "3.5"},
+  {"id": "netflix", "title": "Netflix duplicate"},
+  {"id": null, "title": "no id"},
+  "not an object",
+  42,
+  {"id": "  youtube.leanback.v4 ", "title": "  YouTube ", "iconColor": "#12345", "usage": null},
+  {"id": "com.webos.app.hdmi1", "title": "", "type": "input", "visible": 1}
+], "count": "seven"}

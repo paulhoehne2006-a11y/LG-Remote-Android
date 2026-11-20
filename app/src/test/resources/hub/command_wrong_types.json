@@ -1,0 +1,1 @@
+{"text": null, "reply": "Okay, Netflix startet.", "actions": ["launch_app", {"tool": null}, {"tool": " volume_up "}, 7], "suggestions": [null, "Leiser", 3, "  "], "needs_key": "false"}
