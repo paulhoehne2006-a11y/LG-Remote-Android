@@ -124,7 +124,7 @@ class TvPreferences(context: Context) {
     }
 
     companion object {
-        const val DEFAULT_IP = "192.168.178.60"
+        const val DEFAULT_IP = ""   // no built-in address: first run asks for it or searches the LAN
         const val PREFS_FILE = "modern_lg_remote_prefs"
         const val SECRETS_FILE = "modern_lg_remote_secrets"
         private const val KEY_HUB_TOKEN = "hub_token"
